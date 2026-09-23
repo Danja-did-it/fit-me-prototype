@@ -48,6 +48,24 @@
         Front-Foto: Breiten + Längen. Seiten-Foto: Tiefe von Brust und Bauch.</p>
       <table id="measures"></table>
     </section>
+
+    <section>
+      <h2>3 · Körper verändern</h2>
+      <label class="slider">
+        <span>Körperfett <output id="fatOut">0 %</output></span>
+        <input type="range" id="fat" min="-100" max="100" value="0" step="5">
+      </label>
+      <label class="slider">
+        <span>Muskeln <output id="muscleOut">0 %</output></span>
+        <input type="range" id="muscle" min="-100" max="100" value="0" step="5">
+      </label>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="tint" checked> Veränderung einfärben</label>
+        <button id="resetComp">Zurücksetzen</button>
+      </div>
+      <p class="hint legend"><i style="background:#ffa040"></i>mehr Fett
+        <i style="background:#e53935"></i>mehr Muskeln <i style="background:#4fa8e8"></i>weniger</p>
+    </section>
   </aside>
   <script type="module" src="/src/main.js"></script>
 </body>

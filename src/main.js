@@ -162,3 +162,27 @@ function applyScans() {
 }
 heightInput.addEventListener('change', applyScans);
 applyScans();
+
+// ---------------------------------------------------------------------------
+// Fat / muscle sliders -> per-region growth (see GROWTH in avatar.js)
+// ---------------------------------------------------------------------------
+let rebuildQueued = false;
+function updateComposition() {
+  const fat = Number($('fat').value), muscle = Number($('muscle').value);
+  const fmt = (v) => (v > 0 ? '+' : '') + v + ' %';
+  $('fatOut').textContent = fmt(fat);
+  $('muscleOut').textContent = fmt(muscle);
+  Object.assign(avatar.composition, { fat: fat / 100, muscle: muscle / 100, tint: $('tint').checked });
+  // rebuild at most once per frame while dragging
+  if (!rebuildQueued) {
+    rebuildQueued = true;
+    requestAnimationFrame(() => { rebuildQueued = false; avatar.build(); });
+  }
+}
+for (const id of ['fat', 'muscle']) $(id).addEventListener('input', updateComposition);
+$('tint').addEventListener('change', updateComposition);
+$('resetComp').addEventListener('click', () => {
+  $('fat').value = 0;
+  $('muscle').value = 0;
+  updateComposition();
+});
