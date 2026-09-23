@@ -8,8 +8,37 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <!-- 3D view fills the page -->
+  <!-- 3D view -->
   <div id="stage"></div>
+
+  <!-- Control panel -->
+  <aside id="panel">
+    <h1>Fit-me <span>Prototyp</span></h1>
+
+    <section>
+      <h2>1 · Körper scannen</h2>
+      <p class="hint">Ganzer Körper im Bild, eng anliegende Kleidung, Arme leicht vom Körper weg.
+        Alles wird nur auf diesem Gerät berechnet – kein Upload.</p>
+      <div class="camera" hidden>
+        <video id="video" playsinline muted></video>
+        <div id="countdown"></div>
+      </div>
+      <div class="row">
+        <button id="camBtn">Kamera starten</button>
+        <button id="snapFront" disabled>Front aufnehmen</button>
+        <button id="snapSide" disabled>Seite aufnehmen</button>
+      </div>
+      <div class="row">
+        <label class="btn">Front-Foto wählen<input type="file" accept="image/*" id="fileFront" hidden></label>
+        <label class="btn">Seiten-Foto wählen<input type="file" accept="image/*" id="fileSide" hidden></label>
+      </div>
+      <div class="scans">
+        <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
+        <figure><canvas id="prevSide"></canvas><figcaption>Seite</figcaption></figure>
+      </div>
+      <p id="status" role="status">Bereit.</p>
+    </section>
+  </aside>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

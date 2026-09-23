@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
+import { analyze, drawScan, startCamera, stopCamera, captureFrame, loadImageFile, loadPose } from './scan.js';
 
 const stage = document.getElementById('stage');
 
@@ -43,7 +44,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(stage);
 resize();
 
 // Render loop
@@ -51,3 +52,78 @@ renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
 });
+
+// ---------------------------------------------------------------------------
+// Scan UI: camera / photo -> MediaPipe -> preview
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status');
+const setStatus = (t) => (statusEl.textContent = t);
+
+// Latest scan results, used to shape the avatar
+export const scans = { front: null, side: null };
+window.scans = scans;
+
+async function runScan(view, image) {
+  setStatus('Analysiere ' + (view === 'front' ? 'Front' : 'Seite') + ' … (erstes Mal lädt Modell)');
+  try {
+    const scan = await analyze(image);
+    drawScan($(view === 'front' ? 'prevFront' : 'prevSide'), image, scan);
+    if (!scan) return setStatus('Keine Person erkannt. Ganzer Körper im Bild?');
+    scans[view] = scan;
+    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓');
+  } catch (e) {
+    console.error(e);
+    setStatus('Fehler bei der Analyse: ' + e.message);
+  }
+}
+
+// Photo files
+for (const view of ['front', 'side']) {
+  const input = $(view === 'front' ? 'fileFront' : 'fileSide');
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    runScan(view, await loadImageFile(file));
+    input.value = ''; // allow picking the same file again
+  });
+}
+
+// Camera with 5 s self-timer so the user can step back
+const video = $('video');
+let cameraOn = false;
+$('camBtn').addEventListener('click', async () => {
+  if (cameraOn) {
+    stopCamera(video);
+    cameraOn = false;
+  } else {
+    try {
+      await startCamera(video);
+      cameraOn = true;
+      loadPose(); // start loading the model in the background
+    } catch (e) {
+      console.warn(e);
+      setStatus('Kamera nicht verfügbar (Erlaubnis? HTTPS?). Foto wählen geht immer.');
+    }
+  }
+  video.parentElement.hidden = !cameraOn;
+  $('camBtn').textContent = cameraOn ? 'Kamera stoppen' : 'Kamera starten';
+  $('snapFront').disabled = $('snapSide').disabled = !cameraOn;
+});
+
+async function countdown(seconds) {
+  const el = $('countdown');
+  for (let s = seconds; s > 0; s--) {
+    el.textContent = s;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  el.textContent = '';
+}
+
+for (const view of ['front', 'side']) {
+  $(view === 'front' ? 'snapFront' : 'snapSide').addEventListener('click', async () => {
+    setStatus(view === 'front' ? 'Frontal zur Kamera stellen …' : 'Seitlich zur Kamera stellen …');
+    await countdown(5);
+    if (cameraOn) runScan(view, captureFrame(video));
+  });
+}
