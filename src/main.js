@@ -4,7 +4,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
 import { Animator } from './anim.js';
-import { analyze, drawScan, startCamera, stopCamera, captureFrame, loadImageFile, loadPose } from './scan.js';
+// scan.js (MediaPipe, large) is loaded only when the user starts a scan -> faster first load
+const scanModule = () => import('./scan.js');
 
 const stage = document.getElementById('stage');
 
@@ -75,6 +76,7 @@ window.scans = scans;
 async function runScan(view, image) {
   setStatus('Analysiere ' + (view === 'front' ? 'Front' : 'Seite') + ' … (erstes Mal lädt Modell)');
   try {
+    const { analyze, drawScan } = await scanModule();
     const scan = await analyze(image);
     drawScan($(view === 'front' ? 'prevFront' : 'prevSide'), image, scan);
     if (!scan) return setStatus('Keine Person erkannt. Ganzer Körper im Bild?');
@@ -93,6 +95,7 @@ for (const view of ['front', 'side']) {
   input.addEventListener('change', async () => {
     const file = input.files[0];
     if (!file) return;
+    const { loadImageFile } = await scanModule();
     runScan(view, await loadImageFile(file));
     input.value = ''; // allow picking the same file again
   });
@@ -101,13 +104,15 @@ for (const view of ['front', 'side']) {
 // Camera with 5 s self-timer so the user can step back
 const video = $('video');
 let cameraOn = false;
+let facing = 'user'; // selfie camera first
 $('camBtn').addEventListener('click', async () => {
+  const { startCamera, stopCamera, loadPose } = await scanModule();
   if (cameraOn) {
     stopCamera(video);
     cameraOn = false;
   } else {
     try {
-      await startCamera(video);
+      await startCamera(video, facing);
       cameraOn = true;
       loadPose(); // start loading the model in the background
     } catch (e) {
@@ -118,6 +123,21 @@ $('camBtn').addEventListener('click', async () => {
   video.parentElement.hidden = !cameraOn;
   $('camBtn').textContent = cameraOn ? 'Kamera stoppen' : 'Kamera starten';
   $('snapFront').disabled = $('snapSide').disabled = !cameraOn;
+  $('flipCam').hidden = !cameraOn;
+  video.classList.toggle('mirror', facing === 'user'); // selfie preview feels natural mirrored
+});
+
+// Switch between selfie and back camera
+$('flipCam').addEventListener('click', async () => {
+  facing = facing === 'user' ? 'environment' : 'user';
+  const { startCamera } = await scanModule();
+  try {
+    await startCamera(video, facing);
+  } catch (e) {
+    console.warn(e);
+    setStatus('Diese Kamera ist nicht verfügbar.');
+  }
+  video.classList.toggle('mirror', facing === 'user');
 });
 
 async function countdown(seconds) {
@@ -133,6 +153,7 @@ for (const view of ['front', 'side']) {
   $(view === 'front' ? 'snapFront' : 'snapSide').addEventListener('click', async () => {
     setStatus(view === 'front' ? 'Frontal zur Kamera stellen …' : 'Seitlich zur Kamera stellen …');
     await countdown(5);
+    const { captureFrame } = await scanModule();
     if (cameraOn) runScan(view, captureFrame(video));
   });
 }

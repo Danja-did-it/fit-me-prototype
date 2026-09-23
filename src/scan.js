@@ -138,10 +138,12 @@ export function drawScan(canvas, image, scan) {
 // ---- Camera ----
 let stream = null;
 
-export async function startCamera(video) {
-  // front camera on phones; the browser asks the user for permission
+// facing: 'user' = selfie camera, 'environment' = back camera (someone else takes the photo)
+export async function startCamera(video, facing = 'user') {
+  stopCamera(video);
+  // the browser asks the user for permission
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 1280 } },
     audio: false,
   });
   video.srcObject = stream;

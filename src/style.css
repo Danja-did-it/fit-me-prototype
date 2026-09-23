@@ -7,7 +7,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
   font: 14px/1.45 system-ui, -apple-system, sans-serif; }
 body { display: flex; }
-#stage { flex: 1; min-width: 0; height: 100vh; position: sticky; top: 0; }
+#stage { flex: 1; min-width: 0; height: 100vh; position: sticky; top: 0; touch-action: none; }
 #panel { width: 360px; height: 100vh; overflow-y: auto; background: var(--panel);
   border-left: 1px solid var(--line); padding: 16px; }
 
@@ -25,7 +25,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.active { background: var(--accent); color: #0b1a22; border-color: var(--accent); }
 
 .camera { position: relative; margin-bottom: 8px; }
-.camera video { width: 100%; border-radius: 8px; transform: scaleX(-1); display: block; }
+.camera video { width: 100%; max-height: 50vh; object-fit: contain; background: #000; border-radius: 8px; display: block; }
+.camera video.mirror { transform: scaleX(-1); }
 #countdown { position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 64px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; pointer-events: none; }
 
@@ -54,5 +55,7 @@ label.check { display: flex; align-items: center; gap: 6px; margin-right: auto; 
 @media (max-width: 760px) {
   body { flex-direction: column; }
   #stage { height: 55vh; position: sticky; top: 0; z-index: 1; flex: none; }
-  #panel { width: 100%; height: auto; border-left: 0; border-top: 1px solid var(--line); }
+  #panel { width: 100%; height: auto; border-left: 0; border-top: 1px solid var(--line);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  button, .btn { padding: 10px 12px; } /* bigger touch targets */
 }

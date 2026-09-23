@@ -1,7 +1,7 @@
 // Dev helper: opens the app in headless Chrome, prints console errors,
 // saves a screenshot. Usage: node scripts/check.mjs [url] [screenshot.png] [js-to-run]
 // Optional env: FRONT=photo.jpg SIDE=photo.jpg (fed into the file inputs),
-//               CAMERA=1 (clicks "Kamera starten" using Chrome's fake camera)
+//               MOBILE=1 (phone viewport), CAMERA=1 (clicks "Kamera starten" using Chrome's fake camera)
 import { chromium } from 'playwright-core';
 
 const url = process.argv[2] || 'http://localhost:5173/';
@@ -13,7 +13,10 @@ const browser = await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
          '--enable-unsafe-swiftshader', '--use-angle=swiftshader'],
 });
-const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+// MOBILE=1 -> phone-sized viewport with touch
+const page = await browser.newPage(process.env.MOBILE
+  ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }
+  : { viewport: { width: 1000, height: 700 } });
 const errors = [];
 page.on('console', (m) => { if (m.text().includes('GL Driver Message')) return; if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
 page.on('requestfailed', (r) => errors.push('[requestfailed] ' + r.url()));
