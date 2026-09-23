@@ -1,6 +1,7 @@
 // Entry point: sets up the Three.js scene, camera, lights and render loop.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Avatar } from './avatar.js';
 
 const stage = document.getElementById('stage');
 
@@ -14,7 +15,7 @@ scene.background = new THREE.Color(0x14161a);
 
 // Camera looks at the avatar from the front
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-camera.position.set(0, 1.2, 4);
+camera.position.set(0, 1.1, 3.4);
 
 // Mouse / touch drag to rotate the view
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -30,13 +31,10 @@ scene.add(sun);
 // Floor grid for orientation
 scene.add(new THREE.GridHelper(4, 16, 0x333844, 0x22262e));
 
-// A single voxel cube (placeholder until the human template exists)
-const voxel = new THREE.Mesh(
-  new THREE.BoxGeometry(0.2, 0.2, 0.2),
-  new THREE.MeshStandardMaterial({ color: 0x4fc3f7, flatShading: true })
-);
-voxel.position.y = 0.9;
-scene.add(voxel);
+// The voxel avatar
+const avatar = new Avatar();
+scene.add(avatar.root);
+window.avatar = avatar; // handy for debugging in the browser console
 
 // Keep canvas size in sync with the window
 function resize() {
@@ -50,7 +48,6 @@ resize();
 
 // Render loop
 renderer.setAnimationLoop(() => {
-  voxel.rotation.y += 0.01;
   controls.update();
   renderer.render(scene, camera);
 });
