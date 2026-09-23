@@ -7,7 +7,7 @@
 - [x] Map measured proportions (height, shoulder/hip width) onto template; support front + side photo
 - [x] Fat/muscle sliders -> per-region scaling + color
 - [x] Animations: idle, walk, squat
-- [ ] Works in phone browser (HTTPS deploy)
+- [x] Works in phone browser (HTTPS deploy)
 - [x] README: run steps + known limitations
 
 ## Learnings / Blockers
@@ -19,3 +19,4 @@
 - Task 6: `src/anim.js`, procedural (sine curves, no mocap files). Each mode returns target joint angles; exponential blend toward them makes mode switches smooth. `placeOnFloor()` computes hip height from leg angles (lowest foot on the ground) and, for the squat, shifts hips back so the feet stay planted. Walk is on the spot (treadmill). Avoided `THREE.Clock` (deprecated in recent three) -> `performance.now()`.
 - Task 7 (phone part done, deploy BLOCKED): relative base path, touch-friendly layout (stage sticky on top, bigger buttons, safe-area), selfie/back camera switch, MediaPipe lazy-loaded (first load 145 kB gzip JS instead of 190). Production build tested at 390x844 with touch: scan + animations, no errors. `npm run deploy` builds and pushes `dist/` to branch `gh-pages`. BLOCKER: creating the public GitHub repo (needed for free GitHub Pages) was denied by the permission check -> needs the user's OK. gh token also lacks `workflow` scope, so no GitHub Action; deploy is local instead.
 - Task 8: README.md (German, beginner-friendly): install/run/deploy commands, usage, file map, known limitations.
+- Task 7 unblocked: user approved. Public repo https://github.com/Danja-did-it/fit-me-prototype, `npm run deploy` -> branch gh-pages -> https://danja-did-it.github.io/fit-me-prototype/ (HTTPS enforced). Live test at 390x844: secure context, photo scan front+side, fake camera, sliders, squat - no app errors.

@@ -4,6 +4,8 @@ Browser-Prototyp einer Fitness-App: Foto/Kamera-Scan → 3D-Voxel-Avatar („Pix
 Regler für Körperfett und Muskeln, Animationen (Stehen, Gehen, Kniebeuge).
 
 Technik: [Vite](https://vite.dev) + [Three.js](https://threejs.org) + [MediaPipe Pose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker).
+**Live:** https://danja-did-it.github.io/fit-me-prototype/ (auf dem Handy öffnen, Kamera erlauben)
+
 Alle Bilder werden **nur im Browser auf deinem Gerät** ausgewertet – es gibt keinen Upload und keinen Server.
 
 ## Starten (lokal)
