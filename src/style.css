@@ -1,0 +1,5 @@
+/* Basic full-screen layout */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #14161a; color: #e8e8ea;
+  font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+#stage { position: fixed; inset: 0; }
