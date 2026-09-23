@@ -8,7 +8,7 @@
 - [x] Fat/muscle sliders -> per-region scaling + color
 - [x] Animations: idle, walk, squat
 - [ ] Works in phone browser (HTTPS deploy)
-- [ ] README: run steps + known limitations
+- [x] README: run steps + known limitations
 
 ## Learnings / Blockers
 - Task 1: Vite 8 + three 0.186. Playwright MCP browser was locked by another session, so added `scripts/check.mjs` (playwright-core + installed Chrome, headless) to load the page, list console errors/HTTP failures and screenshot. "GPU stall due to ReadPixels" warnings come from headless screenshots, filtered out. Added inline favicon to avoid a 404.
@@ -18,3 +18,4 @@
 - Task 5: sliders -100..+100 % (0 = as scanned). `GROWTH` table in avatar.js = radius growth per region at +100 % as [fat, muscle]; negative side counts half. Tint (orange fat, red muscle, blue less) per region, toggle in UI. Rebuild throttled to 1x per frame. Learned: at 4 cm voxels a thin limb can collapse to 1 voxel and look broken (forearm wider than upper arm) -> growth floor 0.7 and forearm <= upper arm radius.
 - Task 6: `src/anim.js`, procedural (sine curves, no mocap files). Each mode returns target joint angles; exponential blend toward them makes mode switches smooth. `placeOnFloor()` computes hip height from leg angles (lowest foot on the ground) and, for the squat, shifts hips back so the feet stay planted. Walk is on the spot (treadmill). Avoided `THREE.Clock` (deprecated in recent three) -> `performance.now()`.
 - Task 7 (phone part done, deploy BLOCKED): relative base path, touch-friendly layout (stage sticky on top, bigger buttons, safe-area), selfie/back camera switch, MediaPipe lazy-loaded (first load 145 kB gzip JS instead of 190). Production build tested at 390x844 with touch: scan + animations, no errors. `npm run deploy` builds and pushes `dist/` to branch `gh-pages`. BLOCKER: creating the public GitHub repo (needed for free GitHub Pages) was denied by the permission check -> needs the user's OK. gh token also lacks `workflow` scope, so no GitHub Action; deploy is local instead.
+- Task 8: README.md (German, beginner-friendly): install/run/deploy commands, usage, file map, known limitations.
