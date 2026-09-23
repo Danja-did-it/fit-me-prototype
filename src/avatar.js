@@ -266,6 +266,7 @@ export class Avatar {
 
     for (const [k, r] of Object.entries(saved)) if (J[k]) J[k].rotation.copy(r);
     this.lengths = L;
+    this.armSpread = spec.armSpread; // used by the animations
   }
 
   // Total number of cubes (for debugging / performance)

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
+import { Animator } from './anim.js';
 import { analyze, drawScan, startCamera, stopCamera, captureFrame, loadImageFile, loadPose } from './scan.js';
 
 const stage = document.getElementById('stage');
@@ -37,6 +38,9 @@ scene.add(new THREE.GridHelper(4, 16, 0x333844, 0x22262e));
 const avatar = new Avatar();
 scene.add(avatar.root);
 window.avatar = avatar; // handy for debugging in the browser console
+const animator = new Animator(avatar);
+window.animator = animator;
+let lastTime = performance.now();
 
 // Keep canvas size in sync with the window
 function resize() {
@@ -50,6 +54,9 @@ resize();
 
 // Render loop
 renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  animator.update(Math.min((now - lastTime) / 1000, 0.1)); // seconds; capped after tab switches
+  lastTime = now;
   controls.update();
   renderer.render(scene, camera);
 });
@@ -186,3 +193,13 @@ $('resetComp').addEventListener('click', () => {
   $('muscle').value = 0;
   updateComposition();
 });
+
+// ---------------------------------------------------------------------------
+// Animation mode buttons
+// ---------------------------------------------------------------------------
+for (const btn of document.querySelectorAll('#modes button')) {
+  btn.addEventListener('click', () => {
+    animator.mode = btn.dataset.mode;
+    document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('active', b === btn));
+  });
+}
