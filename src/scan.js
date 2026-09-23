@@ -44,15 +44,53 @@ export async function analyze(image) {
     const m = result.segmentationMasks[0];
     // copy the mask: MediaPipe frees its memory when the result is closed
     const mask = { data: m.getAsFloat32Array().slice(), width: m.width, height: m.height };
+    const landmarks = result.landmarks[0];
     return {
-      landmarks: result.landmarks[0],
+      landmarks,
       mask,
+      colors: sampleColors(image, landmarks, mask),
       width: image.naturalWidth || image.width,
       height: image.naturalHeight || image.height,
     };
   } finally {
     result.close?.();
   }
+}
+
+// Average color of a small square around (x, y), given in 0..1 image coordinates
+function averageColor(ctx, w, h, x, y, r) {
+  const x0 = Math.round(Math.min(w - 2 * r, Math.max(0, x * w - r)));
+  const y0 = Math.round(Math.min(h - 2 * r, Math.max(0, y * h - r)));
+  const d = ctx.getImageData(x0, y0, 2 * r, 2 * r).data;
+  let R = 0, G = 0, B = 0;
+  for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+  const n = d.length / 4;
+  return (Math.round(R / n) << 16) | (Math.round(G / n) << 8) | Math.round(B / n);
+}
+
+// Pick skin, shirt, shorts and hair color from the photo so the avatar looks like the user
+function sampleColors(image, lm, mask) {
+  const w = image.naturalWidth || image.width;
+  const h = image.naturalHeight || image.height;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const r = Math.max(2, Math.round(w / 120)); // sample size ~1 % of the image
+  const lerp = (a, b, t) => ({ x: lm[a].x + (lm[b].x - lm[a].x) * t, y: lm[a].y + (lm[b].y - lm[a].y) * t });
+  const chest = lerp(11, 24, 0.5);  // diagonal shoulder -> opposite hip crosses the chest
+  const thigh = lerp(23, 25, 0.4);  // upper thigh
+  // hair: first person pixel above the nose, a little lower
+  let top = 0;
+  const col = Math.round(lm[0].x * mask.width);
+  while (top < mask.height - 1 && mask.data[top * mask.width + col] <= 0.5) top++;
+  const hairY = (top / mask.height) + 0.01;
+  return {
+    skin: averageColor(ctx, w, h, lm[0].x, (lm[0].y + (lm[9].y + lm[10].y) / 2) / 2, r), // below nose
+    shirt: averageColor(ctx, w, h, chest.x, chest.y, r * 2),
+    shorts: averageColor(ctx, w, h, thigh.x, thigh.y, r * 2),
+    hair: averageColor(ctx, w, h, lm[0].x, hairY, r),
+  };
 }
 
 // Draw image + blue person mask + skeleton lines into a canvas (for the preview)

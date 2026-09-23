@@ -24,8 +24,10 @@ await page.waitForTimeout(1500);
 // feed test photos into the scan inputs and wait for the result
 for (const [env, id] of [['FRONT', '#fileFront'], ['SIDE', '#fileSide']]) {
   if (!process.env[env]) continue;
+  await page.evaluate(() => (document.getElementById('status').textContent = ''));
   await page.setInputFiles(id, process.env[env]);
-  await page.waitForFunction(() => /erkannt|Keine Person|Fehler/.test(document.getElementById('status').textContent), null, { timeout: 60000 });
+  await page.waitForFunction(() => /erkannt|Keine Person|Fehler/.test(document.getElementById('status').textContent), null, { timeout: 60000 })
+    .catch(() => console.log('TIMEOUT waiting for scan'));
   console.log(env, '->', await page.textContent('#status'));
 }
 if (process.env.CAMERA) {

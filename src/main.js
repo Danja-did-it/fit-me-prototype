@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
+import { bodyFromScans } from './measure.js';
 import { analyze, drawScan, startCamera, stopCamera, captureFrame, loadImageFile, loadPose } from './scan.js';
 
 const stage = document.getElementById('stage');
@@ -71,7 +72,8 @@ async function runScan(view, image) {
     drawScan($(view === 'front' ? 'prevFront' : 'prevSide'), image, scan);
     if (!scan) return setStatus('Keine Person erkannt. Ganzer Körper im Bild?');
     scans[view] = scan;
-    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓');
+    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓ – Avatar angepasst');
+    applyScans();
   } catch (e) {
     console.error(e);
     setStatus('Fehler bei der Analyse: ' + e.message);
@@ -127,3 +129,36 @@ for (const view of ['front', 'side']) {
     if (cameraOn) runScan(view, captureFrame(video));
   });
 }
+
+// ---------------------------------------------------------------------------
+// Measurements -> avatar
+// ---------------------------------------------------------------------------
+const heightInput = $('height');
+
+const LABELS = [
+  ['height', 'Größe', 'eingegeben'],
+  ['shoulderWidth', 'Schulterbreite', 'front'],
+  ['waistWidth', 'Taillenbreite', 'front'],
+  ['hipWidth', 'Hüftbreite', 'front'],
+  ['thighWidth', 'Oberschenkel', 'front'],
+  ['legLength', 'Beinlänge', 'front'],
+  ['armLength', 'Armlänge', 'front'],
+  ['chestDepth', 'Brusttiefe', 'side'],
+  ['bellyDepth', 'Bauchtiefe', 'side'],
+];
+
+function showMeasures(body) {
+  $('measures').innerHTML = LABELS.map(([key, label, src]) => {
+    const from = src === 'eingegeben' ? src : scans[src] ? (src === 'front' ? 'Front-Foto' : 'Seiten-Foto') : 'Standard';
+    return `<tr><td>${label} <span class="src">${from}</span></td><td>${Math.round(body[key] * 100)} cm</td></tr>`;
+  }).join('');
+}
+
+function applyScans() {
+  const h = Math.min(220, Math.max(120, Number(heightInput.value) || 175)) / 100;
+  avatar.body = bodyFromScans(scans, h);
+  avatar.build();
+  showMeasures(avatar.body);
+}
+heightInput.addEventListener('change', applyScans);
+applyScans();

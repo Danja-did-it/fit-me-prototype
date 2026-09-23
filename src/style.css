@@ -35,6 +35,14 @@ button.active { background: var(--accent); color: #0b1a22; border-color: var(--a
   border: 1px solid var(--line); border-radius: 8px; display: block; }
 .scans figcaption { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2px; }
 
+label.field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+label.field input { width: 72px; background: #0f1115; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; font: inherit; }
+#measures { width: 100%; border-collapse: collapse; font-size: 13px; }
+#measures td { padding: 3px 0; border-bottom: 1px solid var(--line); }
+#measures td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#measures .src { color: var(--muted); font-size: 11px; }
+
 @media (max-width: 760px) {
   body { flex-direction: column; }
   #stage { height: 55vh; position: sticky; top: 0; z-index: 1; flex: none; }

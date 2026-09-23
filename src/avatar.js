@@ -13,15 +13,8 @@ import * as THREE from 'three';
 
 export const VOXEL = 0.04; // edge length of one cube (4 cm)
 
-// Default body measurements (average adult, 1.75 m). The photo scan overrides these.
-export const DEFAULT_BODY = {
-  height: 1.75,        // total height
-  shoulderWidth: 0.40, // outer width across the shoulders
-  hipWidth: 0.34,      // outer width across the hips
-  depth: 1.0,          // front-to-back thickness multiplier (from side photo)
-};
-
-// Default colors per region (voxel look: skin + sports outfit)
+// Default colors per region (voxel look: skin + sports outfit).
+// The front photo replaces them with colors sampled from the picture.
 const COLORS = {
   skin: 0xe0ac8a,
   shirt: 0x3b82c4,
@@ -30,47 +23,69 @@ const COLORS = {
   hair: 0x3a2a20,
 };
 
-// Build the list of segments from body measurements.
-// Every length is scaled by height so a 1.60 m person gets shorter limbs.
+// Default body measurements (average adult, 1.75 m). The photo scan overrides these.
+export const DEFAULT_BODY = {
+  height: 1.75,        // total height
+  shoulderWidth: 0.42, // outer width across the shoulders (incl. upper arms)
+  waistWidth: 0.30,    // narrowest width between chest and hips
+  hipWidth: 0.34,      // outer width across the hips
+  thighWidth: 0.16,    // width of one thigh
+  chestDepth: 0.23,    // front-to-back at the chest (side photo)
+  bellyDepth: 0.21,    // front-to-back at the belly (side photo)
+  legLength: 0.93,     // hip joint to floor
+  armLength: 0.52,     // shoulder to wrist
+  colors: COLORS,
+};
+
+// Build segment lengths and shapes from body measurements.
 // Radii: [rx, rz] = half width (left-right), half depth (front-back).
 function segmentSpecs(b) {
-  const s = b.height / 1.75;   // scale factor for lengths
-  const d = b.depth;           // depth multiplier
+  const s = b.height / 1.75;                       // general size factor
+  const c = b.colors;
+  const foot = 0.07 * s;
+  const legRest = b.legLength - foot;              // thigh + calf
+  const upper = (b.height - b.legLength) / 0.82;   // factor for torso + head lengths
+  const armR = 0.05 * s;                           // upper arm radius
+  const legR = b.thighWidth / 2;                   // thigh radius
   const shoulderR = b.shoulderWidth / 2;
+  const waistR = b.waistWidth / 2;
   const hipR = b.hipWidth / 2;
-  const armR = 0.05 * s;       // upper arm radius
-  const legR = 0.08 * s;       // thigh radius
+  const chestZ = b.chestDepth / 2;
+  const bellyZ = b.bellyDepth / 2;
 
   return {
     // lengths (used by joints too)
     L: {
-      foot: 0.07 * s,
-      calf: 0.42 * s,
-      thigh: 0.44 * s,
-      belly: 0.24 * s,
-      chest: 0.28 * s,
-      neck: 0.07 * s,
-      head: 0.23 * s,
-      upperArm: 0.30 * s,
-      forearm: 0.30 * s, // includes the hand
+      foot,
+      thigh: legRest * (0.44 / 0.86),
+      calf: legRest * (0.42 / 0.86),
+      belly: 0.24 * upper,
+      chest: 0.28 * upper,
+      neck: 0.07 * upper,
+      head: 0.23 * upper,
+      upperArm: b.armLength * (0.30 / 0.52),
+      forearm: b.armLength * (0.22 / 0.52) + 0.08 * s, // + hand
     },
-    // Horizontal placement of the limbs
-    hipJointX: hipR - legR,
-    shoulderJointX: shoulderR - armR,
+    // Horizontal placement of the limbs (legs must not overlap)
+    hipJointX: Math.max(hipR - legR, legR * 0.95),
+    // arms always outside the waist, even for a wide belly
+    shoulderJointX: Math.max(shoulderR - armR, waistR * 1.05 + armR),
+    // spread arms a little if the hips are wider than the shoulders
+    armSpread: Math.max(0.06, Math.asin(Math.min(0.5, (hipR + armR * 1.2 - Math.max(shoulderR - armR, waistR * 1.05 + armR)) / b.armLength))),
     // Segment shapes: region name -> tube description
     shapes: {
       // torso, built upward from the pelvis
-      belly: { top: [hipR * 0.82, 0.10 * s * d], bottom: [hipR, 0.11 * s * d], color: COLORS.shirt, bands: [[0, 0.3, COLORS.shorts]] },
-      chest: { top: [shoulderR - armR * 1.6, 0.11 * s * d], bottom: [hipR * 0.85, 0.105 * s * d], color: COLORS.shirt },
-      neck: { top: [0.05 * s, 0.05 * s * d], bottom: [0.055 * s, 0.055 * s * d], color: COLORS.skin },
-      head: { top: [0.095 * s, 0.105 * s], bottom: [0.095 * s, 0.105 * s], color: COLORS.skin, bands: [[0.7, 1, COLORS.hair]], profile: 'round' },
+      belly: { top: [waistR, bellyZ], bottom: [hipR, bellyZ * 0.95], color: c.shirt, bands: [[0, 0.3, c.shorts]] },
+      chest: { top: [shoulderR - armR * 2, chestZ * 0.9], bottom: [waistR * 1.05, (chestZ + bellyZ) / 2], color: c.shirt },
+      neck: { top: [0.05 * s, 0.05 * s], bottom: [0.055 * s, 0.055 * s], color: c.skin },
+      head: { top: [0.095 * s, 0.105 * s], bottom: [0.095 * s, 0.105 * s], color: c.skin, bands: [[0.7, 1, c.hair]], hair: c.hair, profile: 'round' },
       // arms, hanging down from the shoulders
-      upperArm: { top: [armR, armR * d], bottom: [armR * 0.85, armR * 0.85 * d], color: COLORS.shirt, bands: [[0.45, 1, COLORS.skin]] },
-      forearm: { top: [armR * 0.8, armR * 0.8 * d], bottom: [armR * 0.6, armR * 0.5 * d], color: COLORS.skin },
+      upperArm: { top: [armR, armR], bottom: [armR * 0.85, armR * 0.85], color: c.shirt, bands: [[0.45, 1, c.skin]] },
+      forearm: { top: [armR * 0.8, armR * 0.8], bottom: [armR * 0.6, armR * 0.5], color: c.skin },
       // legs, hanging down from the hips
-      thigh: { top: [legR, legR * d], bottom: [legR * 0.72, legR * 0.72 * d], color: COLORS.shorts, bands: [[0.55, 1, COLORS.skin]] },
-      calf: { top: [legR * 0.72, legR * 0.72 * d], bottom: [legR * 0.45, legR * 0.45 * d], color: COLORS.skin },
-      foot: { top: [0.045 * s, 0.11 * s], bottom: [0.045 * s, 0.12 * s], color: COLORS.shoe, offsetZ: 0.05 * s },
+      thigh: { top: [legR, legR], bottom: [legR * 0.72, legR * 0.72], color: c.shorts, bands: [[0.55, 1, c.skin]] },
+      calf: { top: [legR * 0.72, legR * 0.72], bottom: [legR * 0.45, legR * 0.45], color: c.skin },
+      foot: { top: [0.045 * s, 0.11 * s], bottom: [0.045 * s, 0.12 * s], color: c.shoe, offsetZ: 0.05 * s },
     },
   };
 }
@@ -125,7 +140,7 @@ function buildSegment(name, length, shape, dir, material) {
         let color = shape.color;
         for (const [a, b, c] of shape.bands || []) if (t >= a && t <= b) color = c;
         // hair: also down the back of the head, never over the face
-        if (name === 'head' && z < -rz * 0.3 && t > 0.35) color = COLORS.hair;
+        if (shape.hair && z < -rz * 0.3 && t > 0.35) color = shape.hair;
         if (name === 'head' && z > rz * 0.35 && t < 0.8) color = shape.color;
         const y = dir * (i + 0.5) * VOXEL;
         cells.push([x, y, z + offZ, color]);
@@ -204,7 +219,7 @@ export class Avatar {
       joint('ankle' + side, J['knee' + side], 0, -L.calf, 0);
       seg('ankle' + side, 'foot', -1);
       // arms hang slightly away from the body
-      J['shoulder' + side].rotation.z = sx * 0.06;
+      J['shoulder' + side].rotation.z = sx * spec.armSpread;
     }
 
     for (const [k, r] of Object.entries(saved)) if (J[k]) J[k].rotation.copy(r);
