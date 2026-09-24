@@ -94,3 +94,16 @@
 - Learned: MediaPipe logs "INFO: Created TensorFlow Lite XNNPACK delegate" via console.error -> routed to
   console.info. Beard detection by brightness fails on dark/low-contrast photos -> manual override.
   bodyFromScans scaled every key incl. objects -> now numbers only.
+
+## Iteration 6: less abstract (user: "Voxel Pixel Verteilung noch zu abstrakt", phone screenshot of own scan)
+- Seen on the user's scan: giant shoulders/arms (loose clamps, arms touching the body inflate widths),
+  blue tint blotches from negative sliders, visible voxel steps and stripes.
+- Measurements clamped to human proportions as share of body height (shoulders 22-30 %, waist 13-24 %,
+  hips 17-26 %, thigh 7-12 %, neck/arm/calf girths, chest/belly depth); waist <= 0.9x shoulders,
+  hips <= 1.1x shoulders; limb girth factors limited to 0.85-1.25. Change tint now off by default.
+- Smooth lighting: each cube stores the body surface normal (from the empty neighbors in the crease-shading
+  loop) as an instanced attribute; the shader blends it 72 % into the cube face normal, so light follows the
+  body instead of every voxel step. Softer blend between rib cage and belly (no "flames" at the upper belly).
+- Bug: stray cube "tabs" at the waist with negative fat. Brute-force check showed the same result, so it was the
+  shape: the ellipsoid distance formula overestimates inside depth for thin long ellipsoids (flat muscles);
+  when fat shrinks the body these spots stayed inside. Fix: inside depth clamped to the smallest radius.

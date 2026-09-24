@@ -99,14 +99,14 @@ export function measureFront(scan, height) {
   return {
     height,
     // neck: just below the chin (60 % from shoulders up to the mouth), never wider than the jaw
-    neckWidth: clamp(runWidth(mask, sh.y - 0.6 * (sh.y - mouthY), px(scan, 0).x, px(scan, 0).x - 0.08 / k, px(scan, 0).x + 0.08 / k) * k, 0.09 * s, 0.16 * s),
-    upperArmWidth: clamp(avg2((i) => limb(11 + i, 13 + i, 0.55)), 0.065 * s, 0.17 * s),
-    forearmWidth: clamp(avg2((i) => limb(13 + i, 15 + i, 0.3)), 0.055 * s, 0.13 * s),
-    calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3, true)), 0.075 * s, 0.18 * s),
-    shoulderWidth: clamp(runWidth(mask, sh.y + 0.03 * (bottom - top), cx) * k, 0.28 * s, 0.65 * s),
-    waistWidth: clamp(waistPx * k, 0.20 * s, 0.60 * s),
-    hipWidth: clamp(hipPx * k, 0.24 * s, 0.65 * s),
-    thighWidth: clamp(thighPx * k, 0.11 * s, 0.32 * s),
+    neckWidth: clamp(runWidth(mask, sh.y - 0.6 * (sh.y - mouthY), px(scan, 0).x, px(scan, 0).x - 0.08 / k, px(scan, 0).x + 0.08 / k) * k, 0.06 * height, 0.085 * height),
+    upperArmWidth: clamp(avg2((i) => limb(11 + i, 13 + i, 0.55)), 0.045 * height, 0.075 * height),
+    forearmWidth: clamp(avg2((i) => limb(13 + i, 15 + i, 0.3)), 0.038 * height, 0.058 * height),
+    calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3, true)), 0.05 * height, 0.078 * height),
+    shoulderWidth: clamp(runWidth(mask, sh.y + 0.03 * (bottom - top), cx) * k, 0.22 * height, 0.30 * height),
+    waistWidth: clamp(waistPx * k, 0.13 * height, 0.24 * height),
+    hipWidth: clamp(hipPx * k, 0.17 * height, 0.26 * height),
+    thighWidth: clamp(thighPx * k, 0.07 * height, 0.12 * height),
     legLength: clamp((bottom - hip.y) * k, 0.42 * height, 0.60 * height),
     armLength: clamp(armPx * k, 0.40 * s, 0.70 * s),
   };
@@ -122,8 +122,8 @@ export function measureSide(scan, height) {
   const torso = hip.y - sh.y;
   const s = height / 1.75;
   return {
-    chestDepth: clamp(runWidth(mask, sh.y + 0.25 * torso, hip.x) * k, 0.15 * s, 0.45 * s),
-    bellyDepth: clamp(runWidth(mask, sh.y + 0.75 * torso, hip.x) * k, 0.14 * s, 0.50 * s),
+    chestDepth: clamp(runWidth(mask, sh.y + 0.25 * torso, hip.x) * k, 0.10 * height, 0.18 * height),
+    bellyDepth: clamp(runWidth(mask, sh.y + 0.75 * torso, hip.x) * k, 0.09 * height, 0.20 * height),
   };
 }
 
@@ -139,6 +139,10 @@ export function bodyFromScans(scans, height) {
     if (scans.front.colors) body.colors = { ...body.colors, ...scans.front.colors };
   }
   if (scans.side) Object.assign(body, measureSide(scans.side, height));
+  // human proportions: waist never wider than the shoulders, hips close to them
+  body.waistWidth = Math.min(body.waistWidth, body.shoulderWidth * 0.9);
+  body.hipWidth = Math.min(body.hipWidth, body.shoulderWidth * 1.1);
+  body.thighWidth = Math.min(body.thighWidth, body.hipWidth * 0.55);
   const f = scans.front?.face;
   if (f) {
     body.face = f.measures;

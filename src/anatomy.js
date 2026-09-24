@@ -117,7 +117,7 @@ export function bodyParts(k) {
   dep('hips', [hipR * 0.95, S(0.0), -S(0.01)], [S(0.06), S(0.11), S(0.09)], 0.03, true);          // hips
 
   // ---- abdomen (bone 'spine', origin = hip joint height) ----
-  ell('spine', [0, S(0.14) * u, S(0.004)], [waistR * 0.94, S(0.13) * u, bellyZ * 0.93]);
+  ell('spine', [0, S(0.14) * u, S(0.004)], [waistR * 0.94, S(0.13) * u, bellyZ * 0.93], false, { k: 0.07 }); // soft waist
   mus('spine', 'rectusAbd', [S(0.034), S(0.04), bellyZ * 0.9], [S(0.04), Lb + S(0.05), bellyZ * 0.95], [0, 0, 1], 0.042, 0.014, true);
   mus('spine', 'obliques', [waistR * 0.8, S(0.05), S(0.03)], [waistR * 0.88, S(0.23) * u, S(0.04)], [1, 0, 0.45], 0.06, 0.02, true);
   mus('spine', 'erector', [S(0.03), S(0.02), -bellyZ * 0.82], [S(0.032), Lb + S(0.1), -chestZ * 0.85], [0, 0, -1], 0.028, 0.024, true);
@@ -127,7 +127,7 @@ export function bodyParts(k) {
   dep('spine', [0, S(0.07), S(0)], [waistR * 1.3, S(0.25) * u, bellyZ * 1.4], 0.012);                     // even layer
 
   // ---- rib cage + shoulder girdle (bone 'chest', origin = bottom of rib cage) ----
-  ell('chest', [0, S(0.13) * u, -S(0.006)], [ribX, S(0.19) * u, chestZ * 0.92]);
+  ell('chest', [0, S(0.13) * u, -S(0.006)], [ribX, S(0.19) * u, chestZ * 0.92], false, { k: 0.07 });
   cone('chest', [S(0.02), Lc - S(0.025), S(0.005)], [shX, Lc - S(0.04), -S(0.005)], S(0.036), S(0.042), true);  // collarbone / shoulder
   mus('chest', 'pectoralis', [S(0.018), S(0.11) * u, chestZ * 0.84], [shX - S(0.035), Lc - S(0.065), S(0.042)], [0.25, -0.1, 1], 0.07, 0.027, true);
   mus('chest', 'serratus', [ribX * 0.93, S(0.04), S(0.035)], [ribX * 0.88, S(0.16) * u, S(0.03)], [1, 0, 0.25], 0.03, 0.012, true);

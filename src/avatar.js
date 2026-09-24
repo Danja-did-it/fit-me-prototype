@@ -97,6 +97,7 @@ function hash(a, b, c, d) {
 // Skeleton from measurements
 // ---------------------------------------------------------------------------
 function skeleton(b, comp) {
+  const g = (v) => Math.min(1.25, Math.max(0.85, v)); // limb girth: at most +-25 % / -15 %
   const s = b.height / 1.75;                     // general size factor
   const u = (b.height - b.legLength) / 0.82;     // factor for torso + head lengths
   const foot = 0.07 * s;
@@ -126,10 +127,10 @@ function skeleton(b, comp) {
     thighR: (b.thighWidth / 2) * 0.72,           // muscles are added on top
     // girth factors (1 = average) that widen/narrow a whole limb around its bone
     girth: {
-      neck: b.neckWidth / (0.12 * s),
-      shoulder: b.upperArmWidth / (0.095 * s),
-      elbow: b.forearmWidth / (0.08 * s),
-      knee: b.calfWidth / (0.11 * s),
+      neck: g(b.neckWidth / (0.12 * s)),
+      shoulder: g(b.upperArmWidth / (0.095 * s)),
+      elbow: g(b.forearmWidth / (0.08 * s)),
+      knee: g(b.calfWidth / (0.11 * s)),
     },
   };
   const ribX = Math.max(k.waistR * 1.08, k.shoulderR - 0.095 * s);
@@ -150,7 +151,11 @@ function skeleton(b, comp) {
 function sdEllipsoid(x, y, z, rx, ry, rz) {
   const k0 = Math.sqrt((x / rx) ** 2 + (y / ry) ** 2 + (z / rz) ** 2);
   const k1 = Math.sqrt((x / (rx * rx)) ** 2 + (y / (ry * ry)) ** 2 + (z / (rz * rz)) ** 2);
-  return k1 === 0 ? -Math.min(rx, ry, rz) : (k0 * (k0 - 1)) / k1;
+  const rMin = Math.min(rx, ry, rz);
+  if (k1 === 0) return -rMin;
+  // inside, the formula overestimates depth for thin long shapes (e.g. flat muscles);
+  // the real depth can never exceed the smallest radius
+  return Math.max((k0 * (k0 - 1)) / k1, -rMin);
 }
 function sdCone(x, y, z, P) {
   const px = x - P.a[0], py = y - P.a[1], pz = z - P.a[2];
@@ -282,10 +287,18 @@ export class Avatar {
   constructor() {
     this.root = new THREE.Group(); // add this to the scene
     this.material = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+    // Smooth light: blend each cube face normal with the real body surface direction,
+    // so light follows the body shape instead of every little voxel step.
+    this.material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec3 instanceNormal;')
+        .replace('#include <beginnormal_vertex>',
+          'vec3 objectNormal = normalize(mix(vec3(normal), instanceNormal, 0.72));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
+    };
     this.body = { ...DEFAULT_BODY };
     // body composition: sliders -1..+1 (0 = as scanned), per-group sliders,
     // training style (strength / mixed / endurance), tint = color the changes
-    this.composition = { fat: 0, muscle: 0, training: 'mixed', groups: {}, tint: true };
+    this.composition = { fat: 0, muscle: 0, training: 'mixed', groups: {}, tint: false };
     this.voxel = 0.01;   // cube size in meters (1 cm)
     this.view = 'look';  // 'look' | 'groups' | 'fibers'
     this.joints = {};
@@ -353,6 +366,7 @@ export class Avatar {
     const stats = { total: 0, slow: 0, fast: 0, fat: 0, other: 0 };
     const col = new THREE.Color();
     const local = new THREE.Vector3();
+    const normal = new THREE.Vector3(), normalM = new THREE.Matrix3();
     const runPass = (V, want) => {
       // ---- 3. coarse grid, then refine near the skin ----
       let maxX = 0, maxY = 0, minZ = 0, maxZ = 0;
@@ -372,7 +386,9 @@ export class Avatar {
       const band = []; // [coarseX, coarseY, coarseZ, candidates]
       // A shape must be included wherever it can change the surface inside this cell:
       // half cell diagonal + refinement band + blend size. Too small = steps between cells.
-      const bandW = (C * 0.9 + 0.004) * (this.bandScale || 1.5); // refine where the skin can be
+      // refine where the skin can be. Fat changes bend the distance field, so the
+      // safety band grows with the fat slider (otherwise stray cube blocks remain).
+      const bandW = (C * 0.9 + 0.004) * (this.bandScale || 1.5) * (1 + 0.3 * Math.abs(fatGain));
       const reach = C * 0.87 + bandW + kB * 1.5;
       for (let j = 0; j < cy; j++) for (let l = 0; l < cz; l++) for (let i = 0; i < cx; i++) {
         const x = (i + 0.5) * C, y = minY + (j + 0.5) * C, z = z0 + (l + 0.5) * C;
@@ -425,10 +441,16 @@ export class Avatar {
           local.set(x, y, z).applyMatrix4(B.invM);
 
           // crease shading ("ambient occlusion"): many filled neighbors = darker
-          let occ = 0;
+          // same loop gives the surface direction: empty neighbors point outward
+          let occ = 0, gx = 0, gy = 0, gz = 0;
           for (let db = -aoR; db <= aoR; db++) for (let dc = -aoR; dc <= aoR; dc++) for (let da = -aoR; da <= aoR; da++) {
-            if (da || db || dc) occ += isIn(ix + da, iy + db, iz + dc);
+            if (!(da || db || dc)) continue;
+            if (isIn(ix + da, iy + db, iz + dc)) occ++;
+            else { gx += da; gy += db; gz += dc; }
           }
+          normal.set(gx, gy, gz);
+          if (normal.lengthSq() < 1e-6) normal.set(0, 0, 1);
+          normal.normalize().applyMatrix3(normalM.setFromMatrix4(B.invM)).normalize(); // into bone space
           const shade = Math.min(1.06, Math.max(0.55, 1.2 - 0.75 * (occ / aoCount)));
 
           // tissue under the skin here
@@ -448,10 +470,10 @@ export class Avatar {
 
           this.colorCube(col, P, local, tissue, M, k, shade, ix, iy, iz);
           const color = col.clone();
-          (byJoint[B.joint + '|' + V] ||= []).push({ p: local.clone(), c: color });
+          (byJoint[B.joint + '|' + V] ||= []).push({ p: local.clone(), c: color, n: normal.clone() });
           // mirrored cube on the right side
           const nameR = CENTRAL.has(bone) ? B.joint : B.joint.slice(0, -1) + 'R';
-          (byJoint[nameR + '|' + V] ||= []).push({ p: new THREE.Vector3(-local.x, local.y, local.z), c: color });
+          (byJoint[nameR + '|' + V] ||= []).push({ p: new THREE.Vector3(-local.x, local.y, local.z), c: color, n: new THREE.Vector3(-normal.x, normal.y, normal.z) });
           stats.total += 2; stats[tissue] += 2;
         }
       }
@@ -465,7 +487,12 @@ export class Avatar {
     this.geometries = {};
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
-      const geo = (this.geometries[size] ||= new THREE.BoxGeometry(+size, +size, +size));
+      // each mesh gets its own box geometry, carrying one surface normal per cube
+      const geo = new THREE.BoxGeometry(+size, +size, +size);
+      const normals = new Float32Array(list.length * 3);
+      list.forEach((r, i) => normals.set([r.n.x, r.n.y, r.n.z], i * 3));
+      geo.setAttribute('instanceNormal', new THREE.InstancedBufferAttribute(normals, 3));
+      this.geometries[key] = geo;
       const mesh = new THREE.InstancedMesh(geo, this.material, list.length);
       mesh.name = name;
       mesh.castShadow = mesh.receiveShadow = true;
