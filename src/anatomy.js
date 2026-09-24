@@ -93,8 +93,13 @@ export function bodyParts(k) {
   const { s, u, L } = k;
   const S = (v) => v * s;
   const base = [], muscles = [], fat = [];
-  const ell = (bone, c, r, sym) => base.push({ bone, type: 'ell', c, r, sym });
-  const cone = (bone, a, b, ra, rb, sym) => base.push({ bone, type: 'cone', a, b, ra, rb, sym });
+  // o = options: k = blend size (small = crisp edge), tag = material for coloring,
+  //              zone: 'detail' = drawn with half-size cubes (head, hands)
+  const opt = (o) => (o ? { ...o, k: o.k !== undefined ? S(o.k) : undefined } : {});
+  const ell = (bone, c, r, sym, o) => base.push({ bone, type: 'ell', c, r, sym, ...opt(o) });
+  const cone = (bone, a, b, ra, rb, sym, o) => base.push({ bone, type: 'cone', a, b, ra, rb, sym, ...opt(o) });
+  const cut = (bone, c, r, sym, o) => base.push({ bone, type: 'cut', c, r, sym, ...opt(o) }); // carves out (eye socket, mouth)
+  const P3 = (x, y, z) => [S(x), S(y), S(z)];
   const mus = (bone, m, a, b, out, w, th, sym) => muscles.push({ bone, type: 'muscle', m, a, b, out, w: S(w), th: S(th), sym });
   const dep = (bone, c, r, amt, sym) => fat.push({ bone, type: 'fat', c, r, amt: S(amt), sym });
 
@@ -140,14 +145,36 @@ export function bodyParts(k) {
   mus('neck', 'sternocleido', [S(0.012), S(0.0), S(0.035)], [S(0.042), L.neck + S(0.02), -S(0.012)], [0.55, 0, 1], 0.015, 0.012, true);
   dep('neck', [0, S(0.03), S(0.03)], [S(0.05), S(0.04), S(0.04)], 0.015);                                  // double chin
 
-  // ---- head (bone 'head', origin = chin height) ----
-  ell('head', [0, S(0.14), -S(0.012)], [S(0.075), S(0.095), S(0.095)]);          // skull
-  ell('head', [0, S(0.07), S(0.024)], [S(0.058), S(0.07), S(0.07)]);             // face / jaw
-  ell('head', [S(0.044), S(0.1), S(0.048)], [S(0.024), S(0.02), S(0.03)], true);  // cheekbones
-  ell('head', [0, S(0.134), S(0.068)], [S(0.058), S(0.016), S(0.03)]);           // brow ridge
-  ell('head', [0, S(0.098), S(0.094)], [S(0.012), S(0.026), S(0.018)]);          // nose
-  ell('head', [S(0.078), S(0.118), -S(0.006)], [S(0.012), S(0.03), S(0.02)], true); // ears
-  dep('head', [S(0.045), S(0.07), S(0.05)], [S(0.035), S(0.035), S(0.035)], 0.01, true); // cheeks
+  // ---- head (bone 'head', origin = chin height, face looks to +z) ----
+  // Proportions of an adult head (23 cm): mouth 4.5 cm, nose tip 7.5 cm, eyes 11.5 cm,
+  // brow 13.5 cm, hairline 17 cm above the chin.
+  const H = { zone: 'detail' };
+  const soft = { ...H, k: 0.02 }, crisp = { ...H, k: 0.006 };
+  ell('head', P3(0, 0.145, -0.015), P3(0.074, 0.088, 0.098), false, soft);            // cranium
+  ell('head', P3(0, 0.12, -0.062), P3(0.058, 0.058, 0.045), false, soft);             // back of the head
+  ell('head', P3(0, 0.152, 0.03), P3(0.064, 0.048, 0.058), false, soft);              // forehead
+  ell('head', P3(0, 0.085, 0.032), P3(0.054, 0.05, 0.056), false, soft);              // mid face
+  cone('head', P3(0.05, 0.05, -0.012), P3(0.018, 0.01, 0.07), S(0.016), S(0.016), true, { ...H, k: 0.015 }); // jaw (angle -> chin)
+  ell('head', P3(0, 0.016, 0.077), P3(0.022, 0.017, 0.018), false, { ...H, k: 0.01 });  // chin
+  ell('head', P3(0.047, 0.098, 0.047), P3(0.02, 0.015, 0.03), true, { ...H, k: 0.012 }); // cheekbones
+  ell('head', P3(0.038, 0.068, 0.052), P3(0.026, 0.028, 0.026), true, { ...H, k: 0.015 }); // cheeks
+  ell('head', P3(0, 0.132, 0.08), P3(0.05, 0.011, 0.02), false, { ...H, k: 0.01 });   // brow ridge
+  cut('head', P3(0.031, 0.114, 0.088), P3(0.017, 0.011, 0.018), true, crisp);          // eye sockets
+  ell('head', P3(0.031, 0.114, 0.071), P3(0.0125, 0.0125, 0.0125), true, { ...H, k: 0.003, tag: 'eye' }); // eyeballs
+  ell('head', P3(0.031, 0.122, 0.077), P3(0.016, 0.005, 0.011), true, { ...H, k: 0.004 }); // upper lids
+  ell('head', P3(0.031, 0.105, 0.076), P3(0.014, 0.004, 0.009), true, { ...H, k: 0.004 }); // lower lids
+  cone('head', P3(0, 0.126, 0.088), P3(0, 0.082, 0.112), S(0.007), S(0.0105), false, crisp); // nose bridge
+  ell('head', P3(0, 0.077, 0.108), P3(0.011, 0.0095, 0.012), false, { ...H, k: 0.005 }); // nose tip
+  ell('head', P3(0.012, 0.075, 0.094), P3(0.0075, 0.0065, 0.008), true, { ...H, k: 0.004 }); // nostril wings
+  cut('head', P3(0.0065, 0.07, 0.1), P3(0.0035, 0.003, 0.004), true, { ...H, k: 0.002 }); // nostrils
+  ell('head', P3(0, 0.053, 0.089), P3(0.019, 0.0045, 0.0065), false, { ...H, k: 0.004, tag: 'lip' }); // upper lip
+  ell('head', P3(0, 0.0435, 0.087), P3(0.017, 0.0055, 0.007), false, { ...H, k: 0.004, tag: 'lip' }); // lower lip
+  cut('head', P3(0, 0.0485, 0.096), P3(0.018, 0.0012, 0.007), false, { ...H, k: 0.002 }); // mouth line
+  ell('head', P3(0.077, 0.112, -0.01), P3(0.009, 0.031, 0.019), true, { ...H, k: 0.005, tag: 'ear' }); // ears
+  cut('head', P3(0.084, 0.108, -0.006), P3(0.0045, 0.016, 0.009), true, { ...H, k: 0.003 }); // ear hollow
+  ell('head', P3(0, 0.16, -0.03), P3(0.08, 0.086, 0.1), false, { ...H, k: 0.012, tag: 'hair' });   // hair on top
+  ell('head', P3(0, 0.105, -0.07), P3(0.07, 0.06, 0.05), false, { ...H, k: 0.012, tag: 'hair' });  // hair at the back
+  dep('head', P3(0.04, 0.066, 0.05), P3(0.03, 0.03, 0.03), 0.01, true);                // cheeks (fat)
 
   // ---- upper arm (bone 'shoulder', arm points down) ----
   const Lu = L.upperArm;
@@ -168,9 +195,28 @@ export function bodyParts(k) {
   cone('elbow', [0, 0, 0], [0, -Lf, 0], S(0.034), S(0.021));
   mus('elbow', 'flexors', [-S(0.012), -S(0.02), S(0.018)], [-S(0.008), -Lf * 0.62, S(0.012)], [-0.6, 0, 0.8], 0.026, 0.021);
   mus('elbow', 'extensors', [S(0.021), S(0.0), S(0.01)], [S(0.014), -Lf * 0.6, S(0.0)], [1, 0, 0.1], 0.024, 0.021);
-  ell('elbow', [0, -Lf - S(0.048), S(0.004)], [S(0.014), S(0.05), S(0.042)]);        // palm
-  ell('elbow', [0, -Lf - S(0.125), S(0.008)], [S(0.011), S(0.045), S(0.037)]);       // fingers
-  cone('elbow', [-S(0.004), -Lf - S(0.025), S(0.034)], [-S(0.012), -Lf - S(0.085), S(0.044)], S(0.011), S(0.009)); // thumb
+  // hand: palm faces the body (-x), thumb to the front (+z), fingers slightly curled
+  const W = -Lf / s; // wrist height in unscaled units for P3()
+  const HA = { zone: 'detail', tag: 'hand' };
+  ell('elbow', P3(0, W, 0), P3(0.017, 0.014, 0.027), false, { ...HA, k: 0.015 });            // wrist
+  ell('elbow', P3(0.002, W - 0.045, 0.002), P3(0.0145, 0.047, 0.041), false, { ...HA, k: 0.012 }); // palm
+  ell('elbow', P3(-0.009, W - 0.033, 0.026), P3(0.012, 0.024, 0.016), false, { ...HA, k: 0.01 });  // thumb ball
+  ell('elbow', P3(-0.007, W - 0.05, -0.028), P3(0.009, 0.026, 0.012), false, { ...HA, k: 0.008 }); // pinky side ball
+  // fingers: [side position z, knuckle height, length base + tip segment, radius]
+  const FINGERS = [[0.034, 0.09, 0.042, 0.035, 0.0092], [0.012, 0.094, 0.047, 0.038, 0.0095],
+                   [-0.011, 0.091, 0.044, 0.036, 0.009], [-0.032, 0.083, 0.035, 0.028, 0.0078]];
+  const d1 = [-0.18, -1], d2 = [-0.5, -1];
+  const n1 = Math.hypot(...d1), n2 = Math.hypot(...d2);
+  for (const [z, ky, l1, l2, r] of FINGERS) {
+    const K = [0.002, W - ky, z];
+    const M = [K[0] + (d1[0] / n1) * l1, K[1] + (d1[1] / n1) * l1, z];
+    const T = [M[0] + (d2[0] / n2) * l2, M[1] + (d2[1] / n2) * l2, z];
+    cone('elbow', P3(...K), P3(...M), S(r), S(r * 0.92), false, { zone: 'detail', tag: 'finger', k: 0.003 });
+    cone('elbow', P3(...M), P3(...T), S(r * 0.92), S(r * 0.78), false, { zone: 'detail', tag: 'finger', k: 0.003 });
+    ell('elbow', P3(K[0] + 0.006, K[1], z), P3(0.008, 0.009, 0.008), false, { ...HA, k: 0.004 }); // knuckle
+  }
+  cone('elbow', P3(-0.006, W - 0.028, 0.034), P3(-0.016, W - 0.062, 0.05), S(0.012), S(0.0105), false, { ...HA, k: 0.006 }); // thumb
+  cone('elbow', P3(-0.016, W - 0.062, 0.05), P3(-0.024, W - 0.088, 0.054), S(0.0105), S(0.0085), false, { zone: 'detail', tag: 'finger', k: 0.003 });
   dep('elbow', [0, -Lf * 0.3, 0], [S(0.05), Lf * 0.4, S(0.05)], 0.008);
 
   // ---- thigh (bone 'hip') ----

@@ -32,8 +32,10 @@ const DETAIL = {
   sole: new THREE.Color(0x2e2e2e),
   sock: new THREE.Color(0xf0f0f0),
   eyeWhite: new THREE.Color(0xf4f1ea),
-  iris: new THREE.Color(0x3b2a20),
-  lip: new THREE.Color(0xb3685a),
+  iris: new THREE.Color(0x5a4030),
+  lip: new THREE.Color(0xc07f70),
+  pupil: new THREE.Color(0x111111),
+  nail: new THREE.Color(0xe8bba8),
 };
 
 // Colors of the anatomy views
@@ -145,7 +147,7 @@ function compile(parts, bind, comp, s) {
     const P = { ...rec, e: bind[rec.bone].inv, mirrored };
     const m = mirrored ? mirrorX : (v) => v;
     let lc, lr;
-    if (rec.type === 'ell' || rec.type === 'fat') {
+    if (rec.type === 'ell' || rec.type === 'fat' || rec.type === 'cut') {
       P.c = m(rec.c);
       // fat fields reach beyond the skin, so the thicker new surface still lies inside them
       if (rec.type === 'fat') P.r = rec.r.map((v) => v * 1.6);
@@ -181,8 +183,17 @@ function compile(parts, bind, comp, s) {
     const w = new THREE.Vector3(...lc).applyMatrix4(bind[rec.bone].world);
     P.wc = [w.x, w.y, w.z];
     P.wr = lr + (rec.type === 'fat' ? 0 : 0.012 * s) + 0.06 * s * Math.max(0, fatGain); // + fillet + fat
-    P.kind = rec.type === 'fat' ? 2 : rec.type === 'muscle' ? 1 : 0;
-    prims.push(P);
+    P.kind = rec.type === 'fat' ? 2 : rec.type === 'muscle' ? 1 : rec.type === 'cut' ? 3 : 0;
+    // Same fields in the same order for every shape: keeps the hot loop fast
+    // (JavaScript engines slow down a lot when objects have different layouts).
+    prims.push({
+      kind: P.kind, cone: rec.type === 'cone', e: P.e,
+      c: P.c || null, r: P.r || null, a: P.a || null, b: P.b || null, ab: P.ab || null, ab2: P.ab2 || 0,
+      ra: rec.ra || 0, rb: rec.rb || 0, ex: P.ex || null, ey: P.ey || null, ez: P.ez || null,
+      k: rec.k || 0, amt: P.amt || 0, wc: P.wc, wr: P.wr,
+      bone: rec.bone, tag: rec.tag || null, zone: rec.zone || null,
+      m: rec.m || null, muscle: P.muscle || null, gain: P.gain || 0, mirrored,
+    });
   };
   for (const list of [parts.base, parts.muscles, parts.fat]) {
     for (const rec of list) {
@@ -197,8 +208,9 @@ function compile(parts, bind, comp, s) {
 // Evaluate the body at world point (x, y, z) using candidate primitives.
 // Returns the signed distance; details (nearest bone, muscle, fat) go into `info`.
 const info = { bone: null, prim: null, muscle: null, muscleD: 1e9, fat: 0 };
+const cutD = new Float32Array(64), cutK = new Float32Array(64); // carve-outs, applied after the union
 function evaluate(x, y, z, cands, kB, kM, detail) {
-  let dB = 1e9, dM = 1e9, F = 0, best = 1e9, bestP = null, bestM = null, bestMD = 1e9;
+  let dB = 1e9, dM = 1e9, F = 0, best = 1e9, bestP = null, bestM = null, bestMD = 1e9, nCut = 0;
   for (let i = 0; i < cands.length; i++) {
     const P = cands[i], e = P.e;
     const lx = e[0] * x + e[4] * y + e[8] * z + e[12];
@@ -211,8 +223,8 @@ function evaluate(x, y, z, cands, kB, kM, detail) {
       if (w > 0) F += P.amt * w * Math.sqrt(w);
       continue;
     }
-    if (P.type === 'cone') d = sdCone(lx, ly, lz, P);
-    else if (P.kind === 0) d = sdEllipsoid(lx - P.c[0], ly - P.c[1], lz - P.c[2], P.r[0], P.r[1], P.r[2]);
+    if (P.cone) d = sdCone(lx, ly, lz, P);
+    else if (P.kind === 0 || P.kind === 3) d = sdEllipsoid(lx - P.c[0], ly - P.c[1], lz - P.c[2], P.r[0], P.r[1], P.r[2]);
     else {
       const qx = lx - P.c[0], qy = ly - P.c[1], qz = lz - P.c[2];
       d = sdEllipsoid(
@@ -220,7 +232,8 @@ function evaluate(x, y, z, cands, kB, kM, detail) {
         qx * P.ey[0] + qy * P.ey[1] + qz * P.ey[2],
         qx * P.ez[0] + qy * P.ez[1] + qz * P.ez[2], P.r[0], P.r[1], P.r[2]);
     }
-    if (P.kind === 0) dB = smin(dB, d, kB);
+    if (P.kind === 3) { if (nCut < 64) { cutD[nCut] = d; cutK[nCut++] = P.k || kB; } continue; }
+    if (P.kind === 0) dB = smin(dB, d, P.k || kB); // each shape can have its own blend size
     else {
       dM = smin(dM, d, kM);
       if (d < bestMD) { bestMD = d; bestM = P; }
@@ -230,7 +243,9 @@ function evaluate(x, y, z, cands, kB, kM, detail) {
   if (detail) {
     info.prim = bestP; info.bone = bestP?.bone; info.muscle = bestM; info.muscleD = bestMD; info.fat = F;
   }
-  return smin(dB, dM, kM * 1.4) - F;
+  let d = smin(dB, dM, kM * 1.4) - F;
+  for (let i = 0; i < nCut; i++) d = -smin(-d, cutD[i], cutK[i]); // smooth subtraction
+  return d;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +270,7 @@ export class Avatar {
     const saved = {};
     for (const [k, j] of Object.entries(this.joints)) saved[k] = j.rotation.clone();
     this.root.traverse((o) => o.isInstancedMesh && o.dispose());
-    this.geometry?.dispose();
+    for (const g of Object.values(this.geometries || {})) g.dispose();
     this.root.clear();
 
     const V = this.voxel, comp = this.composition;
@@ -302,113 +317,127 @@ export class Avatar {
     const kB = 0.045 * s, kM = 0.022 * s * (1 + 0.8 * Math.max(0, comp.muscle));
     const shapes = prims.filter((p) => p.kind !== 2);
 
-    // ---- 3. coarse grid, then refine near the skin ----
-    let maxX = 0, maxY = 0, minZ = 0, maxZ = 0;
-    const minY = 0;
-    for (const p of shapes) {
-      maxX = Math.max(maxX, p.wc[0] + p.wr);
-      maxY = Math.max(maxY, p.wc[1] + p.wr);
-      minZ = Math.min(minZ, p.wc[2] - p.wr); maxZ = Math.max(maxZ, p.wc[2] + p.wr);
-    }
-    const n = Math.max(1, Math.round(0.04 / V)); // fine cells per coarse cell (per axis)
-    const C = V * n;
-    const z0 = Math.floor(minZ / C) * C;
-    const cx = Math.ceil(maxX / C), cy = Math.ceil((maxY - minY) / C), cz = Math.ceil((maxZ - z0) / C);
-    const fx = cx * n, fy = cy * n, fz = cz * n;
-    const inside = new Uint8Array(fx * fy * fz);
-    const fIdx = (ix, iy, iz) => (iy * fz + iz) * fx + ix;
-    const band = []; // [coarseX, coarseY, coarseZ, candidates]
-    // A shape must be included wherever it can change the surface inside this cell:
-    // half cell diagonal + refinement band + blend size. Too small = steps between cells.
-    const bandW = (C * 0.9 + 0.004) * (this.bandScale || 1.5); // refine where the skin can be
-    const reach = C * 0.87 + bandW + kB * 1.5;
-    for (let j = 0; j < cy; j++) for (let l = 0; l < cz; l++) for (let i = 0; i < cx; i++) {
-      const x = (i + 0.5) * C, y = minY + (j + 0.5) * C, z = z0 + (l + 0.5) * C;
-      const cands = [];
-      for (const p of prims) {
-        const dx = x - p.wc[0], dy = y - p.wc[1], dz = z - p.wc[2];
-        if (Math.sqrt(dx * dx + dy * dy + dz * dz) - p.wr < reach) cands.push(p);
-      }
-      if (!cands.some((p) => p.kind !== 2)) continue; // nothing here: outside
-      const d = evaluate(x, y, z, cands, kB, kM, false);
-      if (Math.abs(d) < bandW) band.push([i, j, l, cands]);
-      else if (d < 0) { // completely inside: fill without testing each small cube
-        for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
-          inside[fIdx(i * n + a, j * n + b, l * n + c)] = 1;
-        }
-      }
-    }
-    for (const [i, j, l, cands] of band) {
-      for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
-        const ix = i * n + a, iy = j * n + b, iz = l * n + c;
-        const d = evaluate((ix + 0.5) * V, minY + (iy + 0.5) * V, z0 + (iz + 0.5) * V, cands, kB, kM, false);
-        if (d < 0) inside[fIdx(ix, iy, iz)] = 1;
-      }
-    }
-    const isIn = (ix, iy, iz) => {
-      if (ix < 0) ix = -ix - 1; // mirror across the body center
-      if (ix >= fx || iy < 0 || iy >= fy || iz < 0 || iz >= fz) return 0;
-      return inside[fIdx(ix, iy, iz)];
-    };
-
-    // ---- 4. shell cubes: bone, tissue, color ----
+    // Head and hands get half-size cubes so eyes, lips and fingers can be seen.
+    // want: null = everything, false = all but head/hands, true = only head/hands
     const fatGain = comp.fat > 0 ? comp.fat : 0.5 * comp.fat;
-    const aoR = V <= 0.015 ? 2 : 1;
-    const aoCount = (2 * aoR + 1) ** 3 - 1;
-    const byJoint = {}; // joint name -> [{p: local position, c: color}]
+    const byJoint = {}; // "joint|cube size" -> [{p: local position, c: color}]
     const stats = { total: 0, slow: 0, fast: 0, fat: 0, other: 0 };
     const col = new THREE.Color();
     const local = new THREE.Vector3();
-    for (const [i, j, l, cands] of band) {
-      for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
-        const ix = i * n + a, iy = j * n + b, iz = l * n + c;
-        if (!isIn(ix, iy, iz)) continue;
-        if (isIn(ix + 1, iy, iz) && isIn(ix - 1, iy, iz) && isIn(ix, iy + 1, iz) &&
-            isIn(ix, iy - 1, iz) && isIn(ix, iy, iz + 1) && isIn(ix, iy, iz - 1)) continue;
-        const x = (ix + 0.5) * V, y = minY + (iy + 0.5) * V, z = z0 + (iz + 0.5) * V;
-        evaluate(x, y, z, cands, kB, kM, true);
-        const P = info.prim;
-        if (!P) continue;
-        const B = bind[P.bone];
-        local.set(x, y, z).applyMatrix4(B.invM);
-
-        // crease shading ("ambient occlusion"): many filled neighbors = darker
-        let occ = 0;
-        for (let db = -aoR; db <= aoR; db++) for (let dc = -aoR; dc <= aoR; dc++) for (let da = -aoR; da <= aoR; da++) {
-          if (da || db || dc) occ += isIn(ix + da, iy + db, iz + dc);
+    const runPass = (V, want) => {
+      // ---- 3. coarse grid, then refine near the skin ----
+      let maxX = 0, maxY = 0, minZ = 0, maxZ = 0;
+      const minY = 0;
+      for (const p of shapes) {
+        maxX = Math.max(maxX, p.wc[0] + p.wr);
+        maxY = Math.max(maxY, p.wc[1] + p.wr);
+        minZ = Math.min(minZ, p.wc[2] - p.wr); maxZ = Math.max(maxZ, p.wc[2] + p.wr);
+      }
+      const n = Math.max(1, Math.round(0.04 / V)); // fine cells per coarse cell (per axis)
+      const C = V * n;
+      const z0 = Math.floor(minZ / C) * C;
+      const cx = Math.ceil(maxX / C), cy = Math.ceil((maxY - minY) / C), cz = Math.ceil((maxZ - z0) / C);
+      const fx = cx * n, fy = cy * n, fz = cz * n;
+      const inside = new Uint8Array(fx * fy * fz);
+      const fIdx = (ix, iy, iz) => (iy * fz + iz) * fx + ix;
+      const band = []; // [coarseX, coarseY, coarseZ, candidates]
+      // A shape must be included wherever it can change the surface inside this cell:
+      // half cell diagonal + refinement band + blend size. Too small = steps between cells.
+      const bandW = (C * 0.9 + 0.004) * (this.bandScale || 1.5); // refine where the skin can be
+      const reach = C * 0.87 + bandW + kB * 1.5;
+      for (let j = 0; j < cy; j++) for (let l = 0; l < cz; l++) for (let i = 0; i < cx; i++) {
+        const x = (i + 0.5) * C, y = minY + (j + 0.5) * C, z = z0 + (l + 0.5) * C;
+        const cands = [];
+        let nearDetail = false; // a head/hand shape touches this cell
+        for (const p of prims) {
+          const dx = x - p.wc[0], dy = y - p.wc[1], dz = z - p.wc[2];
+          const gap = Math.sqrt(dx * dx + dy * dy + dz * dz) - p.wr;
+          if (gap < reach) cands.push(p);
+          if (p.zone === 'detail' && gap < C) nearDetail = true;
         }
-        const shade = Math.min(1.06, Math.max(0.55, 1.2 - 0.75 * (occ / aoCount)));
-
-        // tissue under the skin here
-        let tissue = 'other';
-        const M = info.muscle;
-        const bone = P.bone;
-        const noMuscle = bone === 'head' || bone === 'ankle' || (bone === 'elbow' && local.y < -L.forearmOnly);
-        if (!noMuscle) {
-          if (info.fat > 0.02 * s && fatGain > 0) tissue = 'fat';
-          else if (M && info.muscleD < 0.009 * s + Math.max(0, info.fat)) {
-            // fiber type: constant along ~4 cm so it looks like fiber bundles
-            const bundle = Math.floor(local.y / 0.04);
-            const h = hash(Math.round(local.x / V), bundle, Math.round(local.z / V), M.m.length + (M.mirrored ? 7 : 0));
-            tissue = h < M.muscle.slow ? 'slow' : 'fast';
+        if (!cands.some((p) => p.kind !== 2)) continue; // nothing here: outside
+        if (want === true && !nearDetail) continue; // detail pass: only cells at the head and hands
+        const d = evaluate(x, y, z, cands, kB, kM, false);
+        if (Math.abs(d) < bandW) band.push([i, j, l, cands]);
+        else if (d < 0) { // completely inside: fill without testing each small cube
+          for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
+            inside[fIdx(i * n + a, j * n + b, l * n + c)] = 1;
           }
         }
-
-        this.colorCube(col, bone, local, tissue, M, k, shade, ix, iy, iz);
-        const color = col.clone();
-        (byJoint[B.joint] ||= []).push({ p: local.clone(), c: color });
-        // mirrored cube on the right side
-        const nameR = CENTRAL.has(bone) ? B.joint : B.joint.slice(0, -1) + 'R';
-        (byJoint[nameR] ||= []).push({ p: new THREE.Vector3(-local.x, local.y, local.z), c: color });
-        stats.total += 2; stats[tissue] += 2;
       }
-    }
+      for (const [i, j, l, cands] of band) {
+        for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
+          const ix = i * n + a, iy = j * n + b, iz = l * n + c;
+          const d = evaluate((ix + 0.5) * V, minY + (iy + 0.5) * V, z0 + (iz + 0.5) * V, cands, kB, kM, false);
+          if (d < 0) inside[fIdx(ix, iy, iz)] = 1;
+        }
+      }
+      const isIn = (ix, iy, iz) => {
+        if (ix < 0) ix = -ix - 1; // mirror across the body center
+        if (ix >= fx || iy < 0 || iy >= fy || iz < 0 || iz >= fz) return 0;
+        return inside[fIdx(ix, iy, iz)];
+      };
+
+      // ---- 4. shell cubes: bone, tissue, color ----
+      const aoR = V <= 0.015 ? 2 : 1;
+      const aoCount = (2 * aoR + 1) ** 3 - 1;
+      for (const [i, j, l, cands] of band) {
+        for (let b = 0; b < n; b++) for (let c = 0; c < n; c++) for (let a = 0; a < n; a++) {
+          const ix = i * n + a, iy = j * n + b, iz = l * n + c;
+          if (!isIn(ix, iy, iz)) continue;
+          if (isIn(ix + 1, iy, iz) && isIn(ix - 1, iy, iz) && isIn(ix, iy + 1, iz) &&
+              isIn(ix, iy - 1, iz) && isIn(ix, iy, iz + 1) && isIn(ix, iy, iz - 1)) continue;
+          const x = (ix + 0.5) * V, y = minY + (iy + 0.5) * V, z = z0 + (iz + 0.5) * V;
+          evaluate(x, y, z, cands, kB, kM, true);
+          const P = info.prim;
+          if (!P) continue;
+          if (want !== null && (P.zone === 'detail') !== want) continue; // other pass draws this cube
+          const B = bind[P.bone];
+          local.set(x, y, z).applyMatrix4(B.invM);
+
+          // crease shading ("ambient occlusion"): many filled neighbors = darker
+          let occ = 0;
+          for (let db = -aoR; db <= aoR; db++) for (let dc = -aoR; dc <= aoR; dc++) for (let da = -aoR; da <= aoR; da++) {
+            if (da || db || dc) occ += isIn(ix + da, iy + db, iz + dc);
+          }
+          const shade = Math.min(1.06, Math.max(0.55, 1.2 - 0.75 * (occ / aoCount)));
+
+          // tissue under the skin here
+          let tissue = 'other';
+          const M = info.muscle;
+          const bone = P.bone;
+          const noMuscle = bone === 'head' || bone === 'ankle' || (bone === 'elbow' && local.y < -L.forearmOnly);
+          if (!noMuscle) {
+            if (info.fat > 0.02 * s && fatGain > 0) tissue = 'fat';
+            else if (M && info.muscleD < 0.009 * s + Math.max(0, info.fat)) {
+              // fiber type: constant along ~4 cm so it looks like fiber bundles
+              const bundle = Math.floor(local.y / 0.04);
+              const h = hash(Math.round(local.x / V), bundle, Math.round(local.z / V), M.m.length + (M.mirrored ? 7 : 0));
+              tissue = h < M.muscle.slow ? 'slow' : 'fast';
+            }
+          }
+
+          this.colorCube(col, P, local, tissue, M, k, shade, ix, iy, iz);
+          const color = col.clone();
+          (byJoint[B.joint + '|' + V] ||= []).push({ p: local.clone(), c: color });
+          // mirrored cube on the right side
+          const nameR = CENTRAL.has(bone) ? B.joint : B.joint.slice(0, -1) + 'R';
+          (byJoint[nameR + '|' + V] ||= []).push({ p: new THREE.Vector3(-local.x, local.y, local.z), c: color });
+          stats.total += 2; stats[tissue] += 2;
+        }
+      }
+    };
+    const Vd = this.voxel >= 0.0075 ? this.voxel / 2 : this.voxel;
+    if (Vd < this.voxel) { runPass(this.voxel, false); runPass(Vd, true); }
+    else runPass(this.voxel, null);
 
     // ---- 5. meshes (one per bone) ----
-    this.geometry = new THREE.BoxGeometry(V, V, V);
     const m4 = new THREE.Matrix4();
-    for (const [name, list] of Object.entries(byJoint)) {
-      const mesh = new THREE.InstancedMesh(this.geometry, this.material, list.length);
+    this.geometries = {};
+    for (const [key, list] of Object.entries(byJoint)) {
+      const [name, size] = key.split('|');
+      const geo = (this.geometries[size] ||= new THREE.BoxGeometry(+size, +size, +size));
+      const mesh = new THREE.InstancedMesh(geo, this.material, list.length);
       mesh.name = name;
       mesh.castShadow = mesh.receiveShadow = true;
       list.forEach((r, i) => {
@@ -428,10 +457,11 @@ export class Avatar {
   }
 
   // Color of one cube (view mode, clothes, face details, change tint, crease shading)
-  colorCube(out, bone, p, tissue, M, k, shade, ix, iy, iz) {
+  colorCube(out, P, p, tissue, M, k, shade, ix, iy, iz) {
+    const bone = P.bone, tag = P.tag;
     const { L, s } = k;
     const c = this.body.colors;
-    const jitter = 0.97 + hash(ix, iy, iz, 3) * 0.05;
+    const jitter = (bone === 'head' || tag) ? 0.99 + hash(ix, iy, iz, 3) * 0.02 : 0.97 + hash(ix, iy, iz, 3) * 0.05;
 
     if (this.view === 'groups' || this.view === 'fibers') {
       if (tissue === 'fat') out.copy(VIEW_COLORS.fat);
@@ -448,16 +478,22 @@ export class Avatar {
     const S = (v) => v * s;
     let color = c.skin, special = null;
     if (bone === 'head') {
-      const hair = p.y > S(0.178) || (p.z < -S(0.012) && p.y > S(0.075)) ||
-        (Math.abs(p.x) > S(0.06) && p.y > S(0.132) && p.z < S(0.035) && Math.abs(p.x) < S(0.074));
-      if (hair) color = c.hair;
-      if (p.z > S(0.045)) {
-        const ex = Math.abs(p.x) - S(0.031), ey = p.y - S(0.118);
-        const eyeD = Math.hypot(ex, ey);
-        if (eyeD < S(0.007)) special = DETAIL.iris;
-        else if (eyeD < S(0.013) && Math.abs(ey) < S(0.008)) special = DETAIL.eyeWhite;
-        else if (ey > S(0.013) && ey < S(0.022) && Math.abs(ex) < S(0.017)) color = c.hair;  // eyebrows
-        else if (Math.abs(p.x) < S(0.021) && p.y > S(0.044) && p.y < S(0.056)) special = DETAIL.lip; // mouth
+      // material comes from the nearest shape (tag), plus a few painted details
+      if (tag === 'hair' || p.y > S(0.2)) color = c.hair;
+      else if (tag === 'lip') special = DETAIL.lip;
+      else if (tag === 'eye') {
+        const d = Math.hypot(Math.abs(p.x) - S(0.031), p.y - S(0.114));
+        special = d < S(0.0035) ? DETAIL.pupil : d < S(0.0075) ? DETAIL.iris : DETAIL.eyeWhite;
+      }
+      const bx = Math.abs(p.x), by = p.y;
+      // eyebrows: thin arch, highest above the middle of the eye
+      const arch = S(0.131) + S(0.004) * Math.cos(((bx - S(0.031)) / S(0.02)) * 1.2);
+      if (p.z > S(0.065) && bx > S(0.013) && bx < S(0.05) && Math.abs(by - arch) < S(0.0035)) color = c.hair;
+    } else if (bone === 'elbow' && (tag === 'finger' || tag === 'hand')) {
+      // fingernails: back of the fingertip (outside = +x on the left hand before mirroring)
+      if (tag === 'finger' && P.b) {
+        const tip = Math.hypot(p.x - P.b[0], p.y - P.b[1], p.z - P.b[2]);
+        if (tip < S(0.009) && p.x - P.b[0] > S(0.003)) special = DETAIL.nail;
       }
     } else if (bone === 'chest') color = c.shirt;
     else if (bone === 'spine') color = p.y > S(0.08) ? c.shirt : c.shorts;

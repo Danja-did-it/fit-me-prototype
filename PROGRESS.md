@@ -66,3 +66,16 @@
   Strong growth made "balloons" -> thickness growth 0.5x, width 0.18x, gain factor 1.15.
   three r186: PCFSoftShadowMap removed -> PCFShadowMap. Vite HMR reloads broke tests -> check.mjs retries.
 - Build time (headless Chrome, 1 cm): ~80-170 ms, ~13-16k cubes.
+
+## Iteration 4: head + hands (user: "Kopf und Hände noch realistischer")
+- Head from ~25 shapes: cranium, back of head, forehead, mid face, jaw (angle -> chin), chin, cheekbones,
+  cheeks, brow ridge, eye sockets (carved), eyeballs (white / iris / pupil), upper + lower lids, nose bridge,
+  tip, nostril wings, nostrils (carved), upper/lower lip + mouth line (carved), ears with hollow, hair volume.
+- Hands: wrist, palm, thumb ball, pinky ball, 4 fingers x 2 segments with real lengths and slight curl,
+  knuckles, 2-segment thumb, fingernails (painted on the back of the tips).
+- Engine: new shape type "cut" (smooth subtraction), per-shape blend size (fingers 3 mm so they do not melt
+  into a mitten), material tags (hair, eye, lip, ear, finger) for coloring.
+- Detail cubes: head + hands are voxelized in a second pass with half-size cubes (1 cm body -> 0.5 cm face/hands).
+- Learned: objects with different property sets made the hot loop ~5x slower (V8 megamorphic access) ->
+  all shapes normalized to one layout. Detail pass must only touch cells right at head/hand shapes.
+- Build 1 cm incl. detail: ~180-210 ms headless; drag preview (2 cm) ~35-70 ms.
