@@ -20,3 +20,19 @@
 - Task 7 (phone part done, deploy BLOCKED): relative base path, touch-friendly layout (stage sticky on top, bigger buttons, safe-area), selfie/back camera switch, MediaPipe lazy-loaded (first load 145 kB gzip JS instead of 190). Production build tested at 390x844 with touch: scan + animations, no errors. `npm run deploy` builds and pushes `dist/` to branch `gh-pages`. BLOCKER: creating the public GitHub repo (needed for free GitHub Pages) was denied by the permission check -> needs the user's OK. gh token also lacks `workflow` scope, so no GitHub Action; deploy is local instead.
 - Task 8: README.md (German, beginner-friendly): install/run/deploy commands, usage, file map, known limitations.
 - Task 7 unblocked: user approved. Public repo https://github.com/Danja-did-it/fit-me-prototype, `npm run deploy` -> branch gh-pages -> https://danja-did-it.github.io/fit-me-prototype/ (HTTPS enforced). Live test at 390x844: secure context, photo scan front+side, fake camera, sliders, squat - no app errors.
+
+## Test 2026-09-24 (user, iPhone 12 Pro Max, Safari)
+- Figure renders and runs smoothly; rotate/zoom, fat/muscle sliders, idle/walk/squat all work.
+- Camera scan works.
+
+## Planned (next iteration, not started)
+- [ ] Voxel size 2 cm instead of 4 cm
+  - `VOXEL` in src/avatar.js; ~4x more shell cubes (est. 3-5k) - still fine for InstancedMesh.
+  - Rebuild on slider drag gets heavier: measure on iPhone; if needed resize instances instead of full rebuild.
+  - Re-check thin limbs (growth floor 0.7 was for 4 cm) and head/face proportions.
+- [ ] Structured fat/muscle distribution per muscle group
+  - Replace per-segment radius factor with per-group "bumps" on the segment surface:
+    each group = position along the segment (t range) + side (front/back/outside/inside angle) + strength.
+  - Groups: trapezius, deltoids, pecs, lats, abs, obliques, biceps, triceps, forearms,
+    glutes, quads, hamstrings, calves. Fat: belly/love handles, hips, thighs, back of upper arm, chest.
+  - Per-group tint (optional), maybe per-group sliders later.
