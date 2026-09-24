@@ -26,13 +26,27 @@
 - Camera scan works.
 
 ## Planned (next iteration, not started)
-- [ ] Voxel size 2 cm instead of 4 cm
+- [x] Voxel size 2 cm instead of 4 cm (done: selectable 4 cm ... 0.5 cm, default 1 cm)
   - `VOXEL` in src/avatar.js; ~4x more shell cubes (est. 3-5k) - still fine for InstancedMesh.
   - Rebuild on slider drag gets heavier: measure on iPhone; if needed resize instances instead of full rebuild.
   - Re-check thin limbs (growth floor 0.7 was for 4 cm) and head/face proportions.
-- [ ] Structured fat/muscle distribution per muscle group
+- [x] Structured fat/muscle distribution per muscle group (done, see below)
   - Replace per-segment radius factor with per-group "bumps" on the segment surface:
     each group = position along the segment (t range) + side (front/back/outside/inside angle) + strength.
   - Groups: trapezius, deltoids, pecs, lats, abs, obliques, biceps, triceps, forearms,
     glutes, quads, hamstrings, calves. Fat: belly/love handles, hips, thighs, back of upper arm, chest.
   - Per-group tint (optional), maybe per-group sliders later.
+
+## Iteration 2: anatomy (branch feature/anatomy)
+- `src/anatomy.js`: 23 muscles in 13 groups placed as bumps (position along segment, angle, width, thickness),
+  slow-twitch share per muscle from literature (approx.), fat depots (belly, love handles, hips, buttocks,
+  inner thigh, back of arm, chest, chin), training style weights (strength grows fast-twitch most).
+- `src/avatar.js` rewritten: radius table per slice x 72 directions -> fast cube test. Cube sizes 4 cm to 0.5 cm,
+  default 1 cm (~15-18k cubes, ~20 ms rebuild in headless Chrome; 0.5 cm ~65-77k cubes, ~130 ms).
+- Tissue type per cube: fat depot / muscle slow (type I) / muscle fast (type II) / tendon-bone. Fiber type picked
+  deterministically per cube (hash), constant along ~4 cm -> looks like fiber bundles, no flicker on rebuild.
+- Views: Aussehen / Muskelgruppen / Fasertypen. Per-group sliders, training select, stats line.
+- Learned: labeling by strongest thickness left big "tendon" gaps -> label by coverage instead; uniform fat layer
+  must not count as "fat" tissue; upper belly lives in the chest segment and needs its own fat depot or a ring appears;
+  muscle gain x1.2 was invisible -> x2.2.
+- Preview deploy: `npm run deploy:preview` -> /preview/ (live site untouched).

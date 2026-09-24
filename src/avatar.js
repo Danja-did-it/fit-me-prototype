@@ -4,14 +4,21 @@
 //   - A tree of joints (THREE.Group). Rotating a joint moves everything below it,
 //     which is what the animations use (e.g. rotate "kneeL" to bend the left knee).
 //   - Each body segment (thigh, chest, head, ...) is one InstancedMesh of cubes,
-//     attached to its joint. A segment is an elliptic "tube": we know its length and
-//     the width (rx) / depth (rz) radius at its top and bottom, and fill it with voxels.
-//   - Only the outer shell of voxels is created (interior cubes are invisible anyway).
+//     attached to its joint.
+//   - Shape of a segment: a base ellipse (from the photo measurements) plus
+//     anatomical "bumps" for every muscle and fat depot (see anatomy.js).
+//     The radius is stored per slice (one voxel thick) for 72 directions around
+//     the segment, which makes the cube test fast even with 1 cm voxels.
+//   - Every cube gets a tissue type: skin, fat, slow-twitch muscle, fast-twitch muscle,
+//     tendon/bone. The view mode decides how that is colored.
+//   - Only the outer shell of cubes is created (interior cubes are invisible anyway).
 //
 // All sizes are in meters.
 import * as THREE from 'three';
+import { MUSCLES, GROUPS, SEGMENT_MUSCLES, SEGMENT_FAT, BASE_DEFINITION, muscleGain, bump } from './anatomy.js';
 
-export const VOXEL = 0.04; // edge length of one cube (4 cm)
+// Available cube sizes (edge length). Smaller = more precise, more cubes.
+export const VOXEL_SIZES = [0.04, 0.02, 0.015, 0.01, 0.0075, 0.005];
 
 // Default colors per region (voxel look: skin + sports outfit).
 // The front photo replaces them with colors sampled from the picture.
@@ -22,6 +29,19 @@ const COLORS = {
   shoe: 0xf2f2f2,
   hair: 0x3a2a20,
 };
+
+// Colors of the anatomy views
+const VIEW_COLORS = {
+  fat: new THREE.Color(0xf4d35e),
+  tendon: new THREE.Color(0xb9c0cc),
+  other: new THREE.Color(0x9a8f86),
+  slow: new THREE.Color(0x8e1b1b),   // type I: dark red (lots of myoglobin)
+  fast: new THREE.Color(0xf29a9a),   // type II: pale red ("white meat")
+  eye: new THREE.Color(0x222222),
+};
+
+// Tint colors in the normal view to show what changed
+const TINT = { fat: new THREE.Color(0xffa040), muscle: new THREE.Color(0xe53935), less: new THREE.Color(0x4fa8e8) };
 
 // Default body measurements (average adult, 1.75 m). The photo scan overrides these.
 export const DEFAULT_BODY = {
@@ -37,57 +57,44 @@ export const DEFAULT_BODY = {
   colors: COLORS,
 };
 
-// How much each region's radius grows at slider value +1 (= +100 %).
-// [fat, muscle]. Fat goes mostly to belly, hips, thighs, upper arms;
-// muscle mostly to shoulders, chest, arms and calves.
-const GROWTH = {
-  bellyX: [0.45, 0.05], bellyZ: [0.75, 0.05], // belly sticks out to the front
-  hipsX: [0.35, 0.05], hipsZ: [0.4, 0.1],
-  chestX: [0.15, 0.2], chestZ: [0.3, 0.3],
-  shoulders: [0.08, 0.22],
-  neck: [0.25, 0.3],
-  head: [0.08, 0],
-  upperArm: [0.4, 0.55],
-  forearm: [0.15, 0.3],
-  thigh: [0.35, 0.3],
-  calf: [0.15, 0.35],
-};
+// Tissue labels per cube
+const T_OTHER = -1; // tendon / bone / skin without muscle below
+const T_FAT = -2;
 
-// Tint colors to show what changed
-const TINT = { fat: new THREE.Color(0xffa040), muscle: new THREE.Color(0xe53935), less: new THREE.Color(0x4fa8e8) };
+const BINS = 72;            // directions around a segment (every 5 degrees)
+const DEG = 180 / Math.PI;
 
-// Slider value -> effect. Losing is harder than gaining: negative side counts half.
-const eff = (v) => (v > 0 ? v : 0.5 * v);
+// Deterministic pseudo-random number 0..1 from integers (same cube -> same value,
+// so colors and fiber types do not flicker when the body is rebuilt)
+function hash(a, b, c, d) {
+  let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263) ^ Math.imul(c | 0, 1274126177) ^ Math.imul(d | 0, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
 
-// Build segment lengths and shapes from body measurements + composition
-// (comp.fat / comp.muscle in -1..+1, 0 = as scanned).
+// ---------------------------------------------------------------------------
+// Base shapes from measurements
+// ---------------------------------------------------------------------------
 // Radii: [rx, rz] = half width (left-right), half depth (front-back).
-function segmentSpecs(b, comp) {
+function segmentSpecs(b) {
   const s = b.height / 1.75;                       // general size factor
   const c = b.colors;
-  // growth factor and color tint of one region
-  // (never below 70 %: thinner limbs would collapse to a single voxel row)
-  const g = (key) => Math.max(0.7, 1 + GROWTH[key][0] * eff(comp.fat) + GROWTH[key][1] * eff(comp.muscle));
-  const tint = (key) => comp.tint ? { fat: GROWTH[key][0] * eff(comp.fat), muscle: GROWTH[key][1] * eff(comp.muscle) } : null;
-
   const foot = 0.07 * s;
   const legRest = b.legLength - foot;              // thigh + calf
   const upper = (b.height - b.legLength) / 0.82;   // factor for torso + head lengths
-  const armR = 0.05 * s * g('upperArm');           // upper arm radius
-  const legR = (b.thighWidth / 2) * g('thigh');    // thigh radius
-  const calfR = (b.thighWidth / 2) * 0.72 * g('calf');
-  const shoulderR = (b.shoulderWidth / 2) * g('shoulders');
-  const waistR = (b.waistWidth / 2) * g('bellyX');
-  const hipR = (b.hipWidth / 2) * g('hipsX');
-  const chestZ = (b.chestDepth / 2) * g('chestZ');
-  const bellyZ = (b.bellyDepth / 2) * g('bellyZ');
-  const foreR = Math.min(0.04 * s * g('forearm'), armR * 0.85); // never wider than the upper arm
-  const neckR = 0.05 * s * g('neck');
-  const headK = g('head');
-  const shoulderJointX = Math.max(shoulderR - armR, waistR * 1.05 + armR, hipR * 0.8);
+  const armR = 0.045 * s;                          // upper arm base radius (muscles come on top)
+  const foreR = 0.036 * s;
+  const legR = (b.thighWidth / 2) * 0.9;           // thigh base radius
+  const calfR = legR * 0.7;
+  const shoulderR = b.shoulderWidth / 2;
+  const waistR = b.waistWidth / 2;
+  const hipR = b.hipWidth / 2;
+  const chestZ = b.chestDepth / 2;
+  const bellyZ = b.bellyDepth / 2;
+  const neckR = 0.048 * s;
 
   return {
-    // lengths (used by joints too)
+    s,
     L: {
       foot,
       thigh: legRest * (0.44 / 0.86),
@@ -99,135 +106,294 @@ function segmentSpecs(b, comp) {
       upperArm: b.armLength * (0.30 / 0.52),
       forearm: b.armLength * (0.22 / 0.52) + 0.08 * s, // + hand
     },
-    // Horizontal placement of the limbs (legs must not overlap)
-    hipJointX: Math.max(hipR - legR, legR * 0.95),
-    // arms always outside the waist, even for a wide belly
-    shoulderJointX,
-    // spread arms a little if the hips are wider than the shoulders
-    armSpread: Math.max(0.06, Math.asin(Math.min(0.5, (hipR + armR * 1.2 - shoulderJointX) / b.armLength))),
-    // Segment shapes: region name -> tube description
+    base: { shoulderR, armR, hipR, legR },
     shapes: {
       // torso, built upward from the pelvis
-      belly: { top: [waistR, bellyZ], bottom: [hipR, (b.bellyDepth / 2) * 0.95 * g('hipsZ')], color: c.shirt, bands: [[0, 0.3, c.shorts]], tint: tint('bellyZ') },
-      chest: { top: [Math.max(shoulderR - armR * 2, waistR), chestZ * 0.9], bottom: [waistR * 1.05, (chestZ + bellyZ) / 2], color: c.shirt, tint: tint('chestZ') },
-      neck: { top: [neckR, neckR], bottom: [neckR * 1.1, neckR * 1.1], color: c.skin, tint: tint('neck') },
-      head: { top: [0.095 * s * headK, 0.105 * s * headK], bottom: [0.095 * s * headK, 0.105 * s * headK], color: c.skin, bands: [[0.7, 1, c.hair]], hair: c.hair, profile: 'round' },
+      belly: { top: [waistR, bellyZ], bottom: [hipR, bellyZ * 0.95], color: c.shirt, bands: [[0, 0.3, c.shorts]] },
+      chest: { top: [Math.max(shoulderR - armR * 2.2, waistR), chestZ * 0.9], bottom: [waistR * 1.03, (chestZ + bellyZ) / 2], color: c.shirt },
+      neck: { top: [neckR, neckR], bottom: [neckR * 1.1, neckR * 1.1], color: c.skin },
+      head: { top: [0.093 * s, 0.103 * s], bottom: [0.093 * s, 0.103 * s], color: c.skin, hair: c.hair, profile: 'round' },
       // arms, hanging down from the shoulders
-      upperArm: { top: [armR, armR], bottom: [armR * 0.85, armR * 0.85], color: c.shirt, bands: [[0.45, 1, c.skin]], tint: tint('upperArm') },
-      forearm: { top: [foreR, foreR], bottom: [foreR * 0.75, foreR * 0.62], color: c.skin, tint: tint('forearm') },
+      upperArm: { top: [armR, armR], bottom: [armR * 0.8, armR * 0.8], color: c.shirt, bands: [[0.45, 1, c.skin]] },
+      forearm: { top: [foreR, foreR * 0.9], bottom: [foreR * 0.62, foreR * 0.4], color: c.skin, hand: true },
       // legs, hanging down from the hips
-      thigh: { top: [legR, legR], bottom: [Math.max(legR * 0.72, calfR), Math.max(legR * 0.72, calfR)], color: c.shorts, bands: [[0.55, 1, c.skin]], tint: tint('thigh') },
-      calf: { top: [calfR, calfR], bottom: [calfR * 0.62, calfR * 0.62], color: c.skin, tint: tint('calf') },
-      foot: { top: [0.045 * s, 0.11 * s], bottom: [0.045 * s, 0.12 * s], color: c.shoe, offsetZ: 0.05 * s },
+      thigh: { top: [legR, legR], bottom: [legR * 0.72, legR * 0.72], color: c.shorts, bands: [[0.55, 1, c.skin]] },
+      calf: { top: [calfR, calfR], bottom: [calfR * 0.55, calfR * 0.55], color: c.skin },
+      foot: { top: [0.045 * s, 0.11 * s], bottom: [0.045 * s, 0.12 * s], color: c.shoe, offsetZ: 0.05 * s, shoe: true },
     },
   };
 }
 
-// Is point (x, z) inside the ellipse with radii rx, rz?
-const inside = (x, z, rx, rz) => (x * x) / (rx * rx) + (z * z) / (rz * rz) <= 1;
+// ---------------------------------------------------------------------------
+// Profile: radius table per slice and direction, incl. muscles and fat
+// ---------------------------------------------------------------------------
+function expandSym(list) {
+  const out = [];
+  for (const b of list || []) {
+    out.push(b);
+    if (b.sym) out.push({ ...b, a: [-b.a[0], b.a[1]] });
+  }
+  return out;
+}
 
-// Create one voxel segment as an InstancedMesh.
-// dir = +1 grows upward from the joint, -1 grows downward.
-function buildSegment(name, length, shape, dir, material) {
-  const slices = Math.max(1, Math.round(length / VOXEL));
-  const cells = []; // [x, y, z, color]
+function buildProfile(region, length, shape, dir, comp, V) {
+  const slices = Math.max(1, Math.round(length / V));
+  const muscles = expandSym(SEGMENT_MUSCLES[region]).map((b) => {
+    const muscle = MUSCLES[b.m];
+    return { ...b, muscle, gain: muscleGain(muscle, comp) };
+  });
+  const fatDef = SEGMENT_FAT[region] || { all: 0, depots: [] };
+  const fatDepots = expandSym(fatDef.depots);
+  const fatGain = comp.fat > 0 ? comp.fat : 0.5 * comp.fat; // losing fat is slower than gaining
 
-  // radius of slice i (0 = start at joint, 1 = far end)
-  const radiusAt = (t) => {
-    let rx = THREE.MathUtils.lerp(shape.bottom[0], shape.top[0], dir > 0 ? t : 1 - t);
-    let rz = THREE.MathUtils.lerp(shape.bottom[1], shape.top[1], dir > 0 ? t : 1 - t);
-    if (shape.profile === 'round') {
-      // head: fuller in the middle, narrower at chin and top
-      const k = 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
-      rx *= k; rz *= k;
-    }
-    // never thinner than half a voxel so each slice has at least one cube
-    return [Math.max(rx, VOXEL * 0.5), Math.max(rz, VOXEL * 0.5)];
+  const n = slices * BINS;
+  const P = {
+    slices, V, dir, shape,
+    R: new Float32Array(n),      // radius
+    label: new Int16Array(n),    // index into muscles, or T_FAT / T_OTHER
+    dM: new Float32Array(n),     // relative change from muscle sliders (for the tint)
+    dF: new Float32Array(n),     // relative change from fat slider
+    maxR: new Float32Array(slices),
+    muscles,
   };
+  const def0 = new Float32Array(BINS);
+  const mus = new Float32Array(BINS);
+  const musChange = new Float32Array(BINS);
+  const best = new Int16Array(BINS);
+  const bestVal = new Float32Array(BINS);
+  const cover = new Float32Array(BINS); // how much a muscle lies under the skin here (0..1)
 
-  const offZ = shape.offsetZ || 0;
   for (let i = 0; i < slices; i++) {
     const t = (i + 0.5) / slices;
-    const [rx, rz] = radiusAt(t);
-    const [prx, prz] = radiusAt((i - 0.5) / slices); // neighbor slices, for shell test
-    const [nrx, nrz] = radiusAt((i + 1.5) / slices);
-    const nx = Math.max(1, Math.round((2 * rx) / VOXEL));
-    const nz = Math.max(1, Math.round((2 * rz) / VOXEL));
-    // widen the test ellipse slightly so the grid covers the full radius
-    const ex = (nx * VOXEL) / 2, ez = (nz * VOXEL) / 2;
-    for (let ix = 0; ix < nx; ix++) {
-      for (let iz = 0; iz < nz; iz++) {
-        const x = (ix - (nx - 1) / 2) * VOXEL;
-        const z = (iz - (nz - 1) / 2) * VOXEL;
-        if (!inside(x, z, ex, ez) && !(nx === 1 || nz === 1)) continue;
-        // Shell test: skip cube if all neighbors are also filled
-        const end = i === 0 || i === slices - 1;
-        const hidden = !end &&
-          inside(x + VOXEL, z, ex, ez) && inside(x - VOXEL, z, ex, ez) &&
-          inside(x, z + VOXEL, ex, ez) && inside(x, z - VOXEL, ex, ez) &&
-          inside(x, z, prx, prz) && inside(x, z, nrx, nrz);
-        if (hidden) continue;
+    const u = dir > 0 ? t : 1 - t;
+    let rx = THREE.MathUtils.lerp(shape.bottom[0], shape.top[0], u);
+    let rz = THREE.MathUtils.lerp(shape.bottom[1], shape.top[1], u);
+    if (shape.profile === 'round') {
+      // head: fuller in the middle, narrower at chin and top
+      const k = 0.55 + 0.45 * Math.sin(Math.PI * t);
+      rx *= k; rz *= k;
+    }
 
-        // color: base color, overridden by "bands" [from, to, color]
-        // (t = 0 at the joint, 1 at the far end), e.g. short sleeves
-        let color = shape.color;
-        for (const [a, b, c] of shape.bands || []) if (t >= a && t <= b) color = c;
-        // hair: also down the back of the head, never over the face
-        if (shape.hair && z < -rz * 0.3 && t > 0.35) color = shape.hair;
-        if (name === 'head' && z > rz * 0.35 && t < 0.8) color = shape.color;
-        const y = dir * (i + 0.5) * VOXEL;
-        cells.push([x, y, z + offZ, color]);
+    // pass 1: muscle contributions per direction
+    let normSum = 0;
+    for (let k = 0; k < BINS; k++) {
+      const ang = k * 5 > 180 ? k * 5 - 360 : k * 5;
+      let d0 = 0, m = 0, mc = 0, bi = T_OTHER, bv = 0, cv = 0; // bi: muscle that covers this spot most
+      for (let j = 0; j < muscles.length; j++) {
+        const b = muscles[j];
+        const f = bump(t, ang, b);
+        if (!f) continue;
+        d0 += b.h * f * BASE_DEFINITION;
+        const v = b.h * f * (BASE_DEFINITION + b.gain);
+        m += v;
+        mc += b.h * f * b.gain;
+        if (v > bv) bv = v;
+        if (f > cv) { cv = f; bi = j; }
+      }
+      def0[k] = d0; mus[k] = m; musChange[k] = mc; best[k] = bi; bestVal[k] = bv; cover[k] = cv;
+      normSum += 1 + d0;
+    }
+    // keep the measured size: muscle relief at slider 0 must not make the body bigger
+    const norm = normSum / BINS;
+
+    // pass 2: final radius, fat and labels
+    for (let k = 0; k < BINS; k++) {
+      const ang = k * 5 > 180 ? k * 5 - 360 : k * 5;
+      const a = ang / DEG;
+      const s = Math.sin(a), c = Math.cos(a);
+      const R0 = 1 / Math.sqrt((s / rx) ** 2 + (c / rz) ** 2); // ellipse radius in this direction
+      let depot = 0;
+      for (const d of fatDepots) depot += d.h * bump(t, ang, d);
+      const fat = (fatDef.all + depot) * fatGain;
+      const depotFat = depot * fatGain; // only real depots count as "fat" tissue
+      const idx = i * BINS + k;
+      P.R[idx] = Math.max(V * 0.75, R0 * (1 + mus[k] + fat) / norm);
+      P.dM[idx] = musChange[k] / norm;
+      P.dF[idx] = fat;
+      // tissue under the skin here: fat depot, the dominant muscle, or tendon/bone
+      P.label[idx] = depotFat > 0.06 && depotFat > bestVal[k] ? T_FAT : cover[k] < 0.015 ? T_OTHER : best[k];
+      if (P.R[idx] > P.maxR[i]) P.maxR[i] = P.R[idx];
+    }
+  }
+  return P;
+}
+
+// Direction index (fractional) of point (x, z); mirror = -1 for right-side limbs
+function binOf(x, z, mirror) {
+  let a = Math.atan2(mirror * x, z) * DEG; // 0 = front, 90 = outside
+  if (a < 0) a += 360;
+  return a / 5;
+}
+
+function radiusAt(P, i, x, z, mirror) {
+  const f = binOf(x, z, mirror);
+  const k0 = Math.floor(f) % BINS, k1 = (k0 + 1) % BINS, w = f - Math.floor(f);
+  return P.R[i * BINS + k0] * (1 - w) + P.R[i * BINS + k1] * w;
+}
+
+function isInside(P, i, x, z, mirror) {
+  if (i < 0 || i >= P.slices) return false;
+  const r = radiusAt(P, i, x, z, mirror);
+  return x * x + z * z <= r * r;
+}
+
+// Radius in one direction at slice i (angle in degrees, 0 = front, 90 = outside)
+function radiusDir(P, i, angleDeg) {
+  const k = Math.round(((angleDeg + 360) % 360) / 5) % BINS;
+  return P.R[i * BINS + k];
+}
+function maxRadiusDir(P, angleDeg, from = 0, to = 1) {
+  let m = 0;
+  for (let i = Math.floor(from * (P.slices - 1)); i <= Math.floor(to * (P.slices - 1)); i++) m = Math.max(m, radiusDir(P, i, angleDeg));
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Cubes: find shell cells of a profile and color them
+// ---------------------------------------------------------------------------
+function shellCells(P, mirror) {
+  const V = P.V, cells = [];
+  for (let i = 0; i < P.slices; i++) {
+    const N = Math.ceil(P.maxR[i] / V) + 1;
+    for (let kx = -N; kx < N; kx++) {
+      const x = (kx + 0.5) * V;
+      for (let kz = -N; kz < N; kz++) {
+        const z = (kz + 0.5) * V;
+        if (!isInside(P, i, x, z, mirror)) continue;
+        const hidden =
+          isInside(P, i, x + V, z, mirror) && isInside(P, i, x - V, z, mirror) &&
+          isInside(P, i, x, z + V, mirror) && isInside(P, i, x, z - V, mirror) &&
+          isInside(P, i + 1, x, z, mirror) && isInside(P, i - 1, x, z, mirror);
+        if (!hidden) cells.push([i, kx, kz, x, z]);
       }
     }
   }
+  return cells;
+}
 
-  const geo = new THREE.BoxGeometry(VOXEL * 0.96, VOXEL * 0.96, VOXEL * 0.96);
-  const mesh = new THREE.InstancedMesh(geo, material, cells.length);
+// Stats of visible tissue, filled while coloring
+function emptyStats() { return { total: 0, slow: 0, fast: 0, fat: 0, other: 0 }; }
+
+function colorCell(P, region, cell, mirror, view, comp, stats, out) {
+  const [i, kx, kz, x, z] = cell;
+  const { shape, dir } = P;
+  const t = (i + 0.5) / P.slices;
+  const f = binOf(x, z, mirror);
+  const idx = i * BINS + (Math.round(f) % BINS);
+  const ang = f * 5 > 180 ? f * 5 - 360 : f * 5;
+  const label = P.label[idx];
+  const jitter = 0.93 + hash(kx, i, kz, 7) * 0.1; // small brightness change = pixel-art texture
+
+  // tissue type (also for stats). Muscle cubes are slow or fast twitch according to the
+  // muscle's fiber mix; the random pick is constant along ~4 cm so it looks like fiber bundles.
+  let tissue = 'other', muscle = null;
+  if (label === T_FAT) tissue = 'fat';
+  else if (label >= 0) {
+    muscle = P.muscles[label].muscle;
+    const bundle = Math.floor(i / Math.max(1, Math.round(0.04 / P.V)));
+    tissue = hash(kx, bundle, kz, region.length) < muscle.slow ? 'slow' : 'fast';
+  }
+  if (region === 'head' || shape.shoe) tissue = 'other';
+  stats.total++; stats[tissue]++;
+
+  const isEye = region === 'head' && P.V <= 0.02 && t > 0.48 && t < 0.6 && Math.abs(Math.abs(ang) - 22) < 9 && z > 0;
+
+  if (view === 'groups' || view === 'fibers') {
+    if (isEye) out.copy(VIEW_COLORS.eye);
+    else if (tissue === 'fat') out.copy(VIEW_COLORS.fat);
+    else if (muscle && view === 'groups') {
+      out.set(GROUPS[muscle.group].color);
+      out.multiplyScalar(0.85 + 0.3 * hash(label, 3, region.length, 1)); // separate muscles within a group
+    } else if (muscle) out.copy(tissue === 'slow' ? VIEW_COLORS.slow : VIEW_COLORS.fast);
+    else out.copy(region === 'head' || shape.shoe ? VIEW_COLORS.other : VIEW_COLORS.tendon);
+    return out.multiplyScalar(jitter);
+  }
+
+  // normal view: clothes / skin / hair
+  let color = shape.color;
+  for (const [a, b, c] of shape.bands || []) if (t >= a && t <= b) color = c;
+  if (shape.hair) {
+    const back = Math.abs(ang) > 110 && t > 0.35;
+    const top = t > 0.72 && !(Math.abs(ang) < 60 && t < 0.8);
+    if (back || top) color = shape.hair;
+  }
+  out.set(color);
+  if (isEye) out.copy(VIEW_COLORS.eye);
+  // tint shows where fat (orange) / muscle (red) was added or removed (blue)
+  if (comp.tint && !shape.hair) {
+    const dF = P.dF[idx], dM = P.dM[idx];
+    if (Math.abs(dF) > 0.005) out.lerp(dF > 0 ? TINT.fat : TINT.less, Math.min(0.6, Math.abs(dF) * 1.6));
+    if (Math.abs(dM) > 0.005) out.lerp(dM > 0 ? TINT.muscle : TINT.less, Math.min(0.6, Math.abs(dM) * 2.5));
+  }
+  return out.multiplyScalar(jitter);
+}
+
+function buildMesh(name, P, region, mirror, geometry, material, view, comp, stats) {
+  const cells = shellCells(P, mirror);
+  const mesh = new THREE.InstancedMesh(geometry, material, cells.length);
   mesh.name = name;
-  const m = new THREE.Matrix4();
-  const c = new THREE.Color();
-  cells.forEach(([x, y, z, col], idx) => {
-    m.makeTranslation(x, y, z);
-    mesh.setMatrixAt(idx, m);
-    c.set(col);
-    // tint shows where fat (orange) / muscle (red) was added or removed (blue)
-    if (shape.tint) {
-      const { fat, muscle } = shape.tint;
-      c.lerp(fat >= 0 ? TINT.fat : TINT.less, Math.min(0.6, Math.abs(fat) * 1.3));
-      c.lerp(muscle >= 0 ? TINT.muscle : TINT.less, Math.min(0.6, Math.abs(muscle) * 1.3));
-    }
-    // small random brightness change per cube = "pixel art" texture
-    c.multiplyScalar(0.92 + Math.random() * 0.12);
-    mesh.setColorAt(idx, c);
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  const offZ = P.shape.offsetZ || 0;
+  cells.forEach((cell, n) => {
+    const [i, , , x, z] = cell;
+    m.makeTranslation(x, P.dir * (i + 0.5) * P.V, z + offZ);
+    mesh.setMatrixAt(n, m);
+    mesh.setColorAt(n, colorCell(P, region, cell, mirror, view, comp, stats, c));
   });
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   return mesh;
 }
 
+// ---------------------------------------------------------------------------
 export class Avatar {
   constructor() {
     this.root = new THREE.Group(); // add this to the scene
     this.material = new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true });
     this.body = { ...DEFAULT_BODY };
-    // body composition sliders: -1..+1, 0 = as scanned; tint = color the changes
-    this.composition = { fat: 0, muscle: 0, tint: true };
+    // body composition: sliders -1..+1 (0 = as scanned), per-group sliders,
+    // training style (strength / mixed / endurance), tint = color the changes
+    this.composition = { fat: 0, muscle: 0, training: 'mixed', groups: {}, tint: true };
+    this.voxel = 0.01;   // cube size in meters (1 cm)
+    this.view = 'look';  // 'look' | 'groups' | 'fibers'
     this.joints = {};
     this.build();
   }
 
-  // (Re)create joints and voxels from this.body. Keeps joint rotations
+  // (Re)create joints and cubes. Keeps joint rotations
   // so an animation can continue while the body is rebuilt.
   build() {
+    const t0 = performance.now();
     const saved = {};
     for (const [k, j] of Object.entries(this.joints)) saved[k] = j.rotation.clone();
-    // remove old meshes and free their GPU memory
-    this.root.traverse((o) => o.isInstancedMesh && o.geometry.dispose());
+    this.root.traverse((o) => o.isInstancedMesh && o.dispose());
+    this.geometry?.dispose();
     this.root.clear();
 
-    const spec = segmentSpecs(this.body, this.composition);
+    const V = this.voxel, comp = this.composition;
+    const spec = segmentSpecs(this.body);
     const { L, shapes } = spec;
+    this.geometry = new THREE.BoxGeometry(V * 0.96, V * 0.96, V * 0.96);
+
+    // profiles (shared by left and right side)
+    const up = { belly: 1, chest: 1, neck: 1, head: 1 };
+    const P = {};
+    for (const region of Object.keys(shapes)) {
+      P[region] = buildProfile(region, L[region], shapes[region], up[region] ? 1 : -1, comp, V);
+    }
+
+    // Limb placement from the real (muscled / fat) shapes:
+    //   arms outside the waist and the belly, legs not overlapping
+    const torsoSide = Math.max(maxRadiusDir(P.belly, 90), maxRadiusDir(P.chest, 90, 0, 0.6));
+    const armInner = maxRadiusDir(P.upperArm, -90, 0.3, 1);
+    const shoulderJointX = Math.max(spec.base.shoulderR - spec.base.armR, torsoSide + armInner + V * 0.5);
+    const hipSide = Math.max(radiusDir(P.belly, 0, 90), maxRadiusDir(P.thigh, 90, 0, 0.3));
+    const foreInner = maxRadiusDir(P.forearm, -90);
+    const armSpread = Math.max(0.05, Math.asin(Math.min(0.5, (hipSide * 1.02 + foreInner - shoulderJointX) / (L.upperArm + L.forearm))));
+    const hipJointX = Math.max(spec.base.hipR - spec.base.legR, maxRadiusDir(P.thigh, -90) + V * 0.5);
+
     const J = (this.joints = {});
+    const stats = emptyStats();
     const joint = (name, parent, x, y, z) => {
       const g = new THREE.Group();
       g.name = name;
@@ -236,37 +402,35 @@ export class Avatar {
       J[name] = g;
       return g;
     };
-    const seg = (jointName, region, dir) =>
-      J[jointName].add(buildSegment(region, L[region], shapes[region], dir, this.material));
+    const seg = (jointName, region, mirror = 1) =>
+      J[jointName].add(buildMesh(region, P[region], region, mirror, this.geometry, this.material, this.view, comp, stats));
 
     // Hips sit at leg length above the floor
-    const hipY = L.foot + L.calf + L.thigh;
-    joint('hips', this.root, 0, hipY, 0);
-    joint('spine', J.hips, 0, 0, 0);            seg('spine', 'belly', +1);
-    joint('chest', J.spine, 0, L.belly, 0);     seg('chest', 'chest', +1);
-    joint('neck', J.chest, 0, L.chest, 0);      seg('neck', 'neck', +1);
-    joint('head', J.neck, 0, L.neck, 0);        seg('head', 'head', +1);
+    joint('hips', this.root, 0, L.foot + L.calf + L.thigh, 0);
+    joint('spine', J.hips, 0, 0, 0);            seg('spine', 'belly');
+    joint('chest', J.spine, 0, L.belly, 0);     seg('chest', 'chest');
+    joint('neck', J.chest, 0, L.chest, 0);      seg('neck', 'neck');
+    joint('head', J.neck, 0, L.neck, 0);        seg('head', 'head');
 
     for (const [side, sx] of [['L', 1], ['R', -1]]) {
-      // arms: shoulder slightly below top of chest
-      joint('shoulder' + side, J.chest, sx * spec.shoulderJointX, L.chest - VOXEL, 0);
-      seg('shoulder' + side, 'upperArm', -1);
+      joint('shoulder' + side, J.chest, sx * shoulderJointX, L.chest - 0.04 * spec.s, 0);
+      seg('shoulder' + side, 'upperArm', sx);
       joint('elbow' + side, J['shoulder' + side], 0, -L.upperArm, 0);
-      seg('elbow' + side, 'forearm', -1);
-      // legs
-      joint('hip' + side, J.hips, sx * spec.hipJointX, 0, 0);
-      seg('hip' + side, 'thigh', -1);
+      seg('elbow' + side, 'forearm', sx);
+      joint('hip' + side, J.hips, sx * hipJointX, 0, 0);
+      seg('hip' + side, 'thigh', sx);
       joint('knee' + side, J['hip' + side], 0, -L.thigh, 0);
-      seg('knee' + side, 'calf', -1);
+      seg('knee' + side, 'calf', sx);
       joint('ankle' + side, J['knee' + side], 0, -L.calf, 0);
-      seg('ankle' + side, 'foot', -1);
-      // arms hang slightly away from the body
-      J['shoulder' + side].rotation.z = sx * spec.armSpread;
+      seg('ankle' + side, 'foot', sx);
+      J['shoulder' + side].rotation.z = sx * armSpread; // arms hang slightly away from the body
     }
 
     for (const [k, r] of Object.entries(saved)) if (J[k]) J[k].rotation.copy(r);
     this.lengths = L;
-    this.armSpread = spec.armSpread; // used by the animations
+    this.armSpread = armSpread; // used by the animations
+    this.stats = stats;
+    this.buildMs = performance.now() - t0;
   }
 
   // Total number of cubes (for debugging / performance)

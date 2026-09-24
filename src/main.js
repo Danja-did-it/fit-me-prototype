@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
 import { Animator } from './anim.js';
+import { GROUPS } from './anatomy.js';
 // scan.js (MediaPipe, large) is loaded only when the user starts a scan -> faster first load
 const scanModule = () => import('./scan.js');
 
@@ -185,35 +186,74 @@ function showMeasures(body) {
 function applyScans() {
   const h = Math.min(220, Math.max(120, Number(heightInput.value) || 175)) / 100;
   avatar.body = bodyFromScans(scans, h);
-  avatar.build();
+  rebuild();
   showMeasures(avatar.body);
 }
 heightInput.addEventListener('change', applyScans);
-applyScans();
 
 // ---------------------------------------------------------------------------
-// Fat / muscle sliders -> per-region growth (see GROWTH in avatar.js)
+// Body composition: fat, muscle, training style, per muscle group
+// (distribution: see anatomy.js)
 // ---------------------------------------------------------------------------
+const fmt = (v) => (v > 0 ? '+' : '') + v + ' %';
+const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+
+// one slider per muscle group
+$('groupSliders').innerHTML = Object.entries(GROUPS).map(([id, g]) => `
+  <label class="slider">
+    <span><span><i class="chip" style="background:${hex(g.color)}"></i>${g.label}</span><output id="gOut-${id}">0 %</output></span>
+    <input type="range" data-group="${id}" min="-100" max="100" value="0" step="5">
+  </label>`).join('');
+const groupInputs = [...document.querySelectorAll('#groupSliders input')];
+
+// legend text depends on the view
+const LEGENDS = {
+  look: '<i style="background:#ffa040"></i>mehr Fett <i style="background:#e53935"></i>mehr Muskeln <i style="background:#4fa8e8"></i>weniger',
+  groups: Object.values(GROUPS).map((g) => `<i style="background:${hex(g.color)}"></i>${g.label}`).join(' ') +
+    ' <i style="background:#f4d35e"></i>Fettdepot <i style="background:#d9d2c5"></i>Sehne/Knochen',
+  fibers: '<i style="background:#8e1b1b"></i>langsame Fasern (Typ I, Ausdauer) <i style="background:#f0b8b0"></i>schnelle Fasern (Typ II, Kraft) <i style="background:#f4d35e"></i>Fett',
+};
+
 let rebuildQueued = false;
+function rebuild() {
+  // rebuild at most once per frame while dragging
+  if (rebuildQueued) return;
+  rebuildQueued = true;
+  requestAnimationFrame(() => {
+    rebuildQueued = false;
+    avatar.build();
+    const s = avatar.stats, n = (v) => v.toLocaleString('de-DE');
+    const muscle = s.slow + s.fast;
+    $('stats').textContent = `${n(avatar.voxelCount)} Würfel (${Math.round(avatar.buildMs)} ms) · sichtbar: ` +
+      `${n(muscle)} Muskel (${muscle ? Math.round((s.slow / muscle) * 100) : 0} % langsam), ${n(s.fat)} Fett`;
+  });
+}
+
 function updateComposition() {
   const fat = Number($('fat').value), muscle = Number($('muscle').value);
-  const fmt = (v) => (v > 0 ? '+' : '') + v + ' %';
   $('fatOut').textContent = fmt(fat);
   $('muscleOut').textContent = fmt(muscle);
-  Object.assign(avatar.composition, { fat: fat / 100, muscle: muscle / 100, tint: $('tint').checked });
-  // rebuild at most once per frame while dragging
-  if (!rebuildQueued) {
-    rebuildQueued = true;
-    requestAnimationFrame(() => { rebuildQueued = false; avatar.build(); });
+  const groups = {};
+  for (const input of groupInputs) {
+    groups[input.dataset.group] = Number(input.value) / 100;
+    $('gOut-' + input.dataset.group).textContent = fmt(Number(input.value));
   }
+  Object.assign(avatar.composition, {
+    fat: fat / 100, muscle: muscle / 100, groups, training: $('training').value, tint: $('tint').checked,
+  });
+  avatar.view = $('view').value;
+  avatar.voxel = Number($('voxel').value);
+  $('legend').innerHTML = LEGENDS[avatar.view];
+  rebuild();
 }
-for (const id of ['fat', 'muscle']) $(id).addEventListener('input', updateComposition);
-$('tint').addEventListener('change', updateComposition);
+for (const el of [$('fat'), $('muscle'), ...groupInputs]) el.addEventListener('input', updateComposition);
+for (const id of ['training', 'tint', 'view', 'voxel']) $(id).addEventListener('change', updateComposition);
 $('resetComp').addEventListener('click', () => {
-  $('fat').value = 0;
-  $('muscle').value = 0;
+  for (const el of [$('fat'), $('muscle'), ...groupInputs]) el.value = 0;
   updateComposition();
 });
+updateComposition();
+applyScans();
 
 // ---------------------------------------------------------------------------
 // Animation mode buttons

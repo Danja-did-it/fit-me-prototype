@@ -38,6 +38,11 @@ Weitere Befehle:
 3. **Körper verändern** – Körperfett und Muskeln von −100 % bis +100 %. Jede Region wächst unterschiedlich
    (Fett: Bauch, Hüfte, Oberschenkel, Oberarm; Muskeln: Schultern, Brust, Arme, Waden).
    Einfärbung: orange = mehr Fett, rot = mehr Muskeln, blau = weniger.
+   **Training** (Kraft / Gemischt / Ausdauer) bestimmt, wie stark schnelle und langsame Fasern wachsen.
+   **Einzelne Muskelgruppen** (aufklappen): 13 eigene Regler, z. B. nur Bizeps oder nur Waden.
+   **Darstellung:** Ansicht *Aussehen*, *Muskelgruppen* (Farbe pro Gruppe, gelb = Fettdepot, grau = Sehne/Knochen)
+   oder *Fasertypen* (dunkelrot = langsame Typ-I-Fasern, hellrot = schnelle Typ-II-Fasern).
+   **Würfelgröße** 4 cm bis 0,5 cm (Standard 1 cm; 0,5 cm = ca. 70.000 Würfel, auf älteren Handys langsamer).
 4. **Bewegung** – Stehen, Gehen (auf der Stelle), Kniebeuge. Figur mit Maus/Finger drehen, zoomen mit Mausrad/zwei Fingern.
 
 ## Auf dem Handy
@@ -54,7 +59,8 @@ Die Kamera funktioniert im Browser nur über **HTTPS** (oder `localhost`). Wege 
 ```
 index.html              Seite mit Bedien-Panel
 src/main.js             3D-Szene, Render-Schleife, Verdrahtung der Bedienelemente
-src/avatar.js           Voxel-Figur: Gelenke, Körperteile aus Würfeln, Fett/Muskel-Wachstum (GROWTH)
+src/avatar.js           Voxel-Figur: Gelenke, Körperteile aus Würfeln, Gewebeart pro Würfel, Ansichten
+src/anatomy.js          Muskeln (Lage, Größe, Fasertyp-Anteil), Fettdepots, Trainingsarten
 src/scan.js             MediaPipe: Pose + Personen-Maske, Kamera, Farben aus dem Foto
 src/measure.js          Maske + Pose -> Maße in Metern (Breiten, Längen, Tiefen)
 src/anim.js             Animationen Stehen / Gehen / Kniebeuge
@@ -71,7 +77,9 @@ PROGRESS.md             Aufgabenliste, Erkenntnisse, Blocker
   Arme oder Beine, die sich berühren, werden nur grob herausgerechnet. Schräge Kamera / Weitwinkel verzerrt.
 - **Nur Front + Seite:** Der Querschnitt jedes Körperteils ist eine Ellipse. Rücken, Po, Brust-Form usw.
   werden nicht einzeln erfasst.
-- **Voxel-Auflösung 4 cm:** kleine Veränderungen (1–2 cm) sind erst sichtbar, wenn ein Würfel dazukommt.
+- **Anatomie vereinfacht:** 23 Hauptmuskeln als weiche Wölbungen auf der Oberfläche; tiefe Muskeln, Sehnenverläufe
+  und Unterschiede zwischen Menschen fehlen. Fasertyp-Anteile sind Literatur-Durchschnitte (stark individuell).
+  Die Fasern werden nur an der Oberfläche gezeigt, nicht im Inneren.
 - **Animation prozedural** (Sinus-Kurven), keine echten Bewegungsdaten; Gehen findet auf der Stelle statt.
   Bei sehr großen Fett-/Muskelwerten können sich Körperteile in Bewegungen überschneiden.
 - **Pose-Modell** (~9 MB) wird beim ersten Scan geladen; auf älteren Handys dauert die Analyse ein paar Sekunden.

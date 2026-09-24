@@ -37,6 +37,8 @@ button.active { background: var(--accent); color: #0b1a22; border-color: var(--a
 .scans figcaption { color: var(--muted); font-size: 12px; text-align: center; margin-top: 2px; }
 
 label.field { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+label.field select { flex: 1; min-width: 0; background: #0f1115; color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; font: inherit; }
 label.field input { width: 72px; background: #0f1115; color: var(--text); border: 1px solid var(--line);
   border-radius: 6px; padding: 6px 8px; font: inherit; }
 #measures { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -51,6 +53,11 @@ label.slider input { width: 100%; accent-color: var(--accent); }
 label.check { display: flex; align-items: center; gap: 6px; margin-right: auto; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; }
 .legend i:first-child { margin-left: 0; }
+
+details { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+details summary { cursor: pointer; color: var(--muted); }
+details[open] summary { margin-bottom: 8px; }
+.chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 
 @media (max-width: 760px) {
   body { flex-direction: column; }

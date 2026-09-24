@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist --nojekyll"
+    "deploy": "npm run build && gh-pages -d dist --nojekyll",
+    "deploy:preview": "npm run build && gh-pages -d dist --dest preview --add --nojekyll"
   },
   "type": "module",
   "dependencies": {
