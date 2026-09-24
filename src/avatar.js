@@ -530,6 +530,9 @@ export class Avatar {
       return out.multiplyScalar(shade * jitter);
     }
 
+    // face and hands: crease shading much weaker, otherwise it reads like dirt / stubble
+    if (bone === 'head' || bone === 'neck' || tag === 'hand' || tag === 'finger') shade = 1 - (1 - shade) * 0.4;
+
     // ---- normal view: skin, clothes, hair, face ----
     const S = (v) => v * s;
     let color = c.skin, special = null;
@@ -538,7 +541,7 @@ export class Avatar {
       const look = k.look, E = k.eye;
       if (tag === 'hair' || (p.y > S(0.2) && look.hair.style !== 'none')) color = c.hair;
       else if (tag === 'beard') color = c.beard;
-      else if (tag === 'lip') color = c.lip;
+      else if (tag === 'lip') color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), 0.2).getHex(); // natural lips
       else if (tag === 'eye') {
         const d = Math.hypot(Math.abs(p.x) - E.x, p.y - E.y);
         if (d < E.r * 0.28) special = DETAIL.pupil;
@@ -546,9 +549,12 @@ export class Avatar {
         else special = DETAIL.eyeWhite;
       }
       const bx = Math.abs(p.x), by = p.y;
-      // eyebrows: thin arch above the eye, in the scanned brow color
-      const arch = E.y + S(0.017) + S(0.004) * Math.cos(((bx - E.x) / S(0.02)) * 1.2);
-      if (p.z > S(0.065) && bx > E.x - S(0.018) && bx < E.x + S(0.019) && Math.abs(by - arch) < S(0.0035)) color = c.brow;
+      // eyebrows: thin soft arch above the eye, scanned brow color blended a little into the skin
+      const arch = E.y + S(0.021) + S(0.003) * Math.cos(((bx - E.x) / S(0.02)) * 1.2);
+      const browW = S(0.0028) * (1 - 0.5 * Math.max(0, (bx - E.x) / S(0.017))); // thinner to the outside
+      if (p.z > S(0.065) && bx > E.x - S(0.016) && bx < E.x + S(0.017) && Math.abs(by - arch) < browW) {
+        color = new THREE.Color(c.brow).lerp(new THREE.Color(c.skin), 0.3).getHex();
+      }
       // stubble: darker skin on jaw, chin and upper lip
       if (look.beard === 'stubble' && tag !== 'lip' && tag !== 'eye' && p.z > -S(0.01) && p.y < S(0.075)) {
         out.set(color).lerp(new THREE.Color(c.beard), 0.35);

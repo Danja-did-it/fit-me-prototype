@@ -107,3 +107,12 @@
 - Bug: stray cube "tabs" at the waist with negative fat. Brute-force check showed the same result, so it was the
   shape: the ellipsoid distance formula overestimates inside depth for thin long ellipsoids (flat muscles);
   when fat shrinks the body these spots stayed inside. Fix: inside depth clamped to the smallest radius.
+
+## Iteration 7: face (user: hands + body OK now, face not)
+- From the user's phone screenshot: small sunken eyes with heavy lids (angry look), thick low brows, lips
+  sticking out + dark "mustache" shadow, dirty-looking crease shading on chin/jaw, coarse neck.
+- Fixes: shallower eye sockets, eyeball further forward, thinner lids placed higher/lower (open eyes); brows
+  thinner, higher, tapering, blended 30 % into skin; lips flatter, color 80 % lip / 20 % skin, shallow mouth line,
+  smaller nostrils; new shape below the mouth removes the deep groove (chin no longer a separate plate);
+  softer jaw/chin blend; nose base fills the gap under the tip (profile no longer a beak); crease shading 60 %
+  weaker on face, neck and hands; neck now built with the fine detail cubes.
