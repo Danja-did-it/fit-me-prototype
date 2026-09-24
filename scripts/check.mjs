@@ -38,7 +38,16 @@ if (process.env.CAMERA) {
   await page.waitForTimeout(2000);
   console.log('camera ->', await page.evaluate(() => { const v = document.getElementById('video'); return v.videoWidth + 'x' + v.videoHeight; }));
 }
-if (script) console.log('eval:', JSON.stringify(await page.evaluate(script)));
+// run the test code; if Vite reloads the page meanwhile (file just changed), retry once
+async function run() {
+  try { return await page.evaluate(script); } catch (e) {
+    if (!/context was destroyed|navigation/i.test(e.message)) throw e;
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+    return page.evaluate(script);
+  }
+}
+if (script) console.log('eval:', JSON.stringify(await run()));
 await page.screenshot({ path: shot });
 console.log(errors.length ? errors.join('\n') : 'no console errors/warnings');
 await browser.close();

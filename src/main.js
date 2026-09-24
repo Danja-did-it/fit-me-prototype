@@ -13,28 +13,53 @@ const stage = document.getElementById('stage');
 // Renderer draws the scene into a <canvas>
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // softer, film-like light
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // soft edges via shadow.radius
 stage.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14161a);
+scene.background = new THREE.Color(0x1b1e24);
 
 // Camera looks at the avatar from the front
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-camera.position.set(0, 1.1, 3.4);
+const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 100);
+camera.position.set(0, 1.15, 3.6);
 
 // Mouse / touch drag to rotate the view
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.9, 0);
+controls.target.set(0, 0.95, 0);
 controls.enableDamping = true;
+controls.minDistance = 0.4;
+controls.maxDistance = 8;
+window.camera = camera; window.controls = controls; // for the test script
 
-// Lights: soft fill + one directional "sun"
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.2));
-const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-sun.position.set(2, 4, 3);
-scene.add(sun);
+// Studio lights: warm key light with soft shadows, cool fill, rim light from behind
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3430, 0.55));
+const key = new THREE.DirectionalLight(0xfff0e0, 2.4);
+key.position.set(1.6, 3.2, 2.6);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -1.1, right: 1.1, top: 2.1, bottom: -0.2, near: 0.5, far: 8 });
+key.shadow.bias = -0.001;
+key.shadow.normalBias = 0.025; // avoids stripe artifacts ("shadow acne") on the cubes
+key.shadow.radius = 3;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd2ff, 0.7);
+fill.position.set(-2.5, 1.8, 1.5);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.9);
+rim.position.set(-0.5, 2.5, -3);
+scene.add(rim);
 
-// Floor grid for orientation
-scene.add(new THREE.GridHelper(4, 16, 0x333844, 0x22262e));
+// Round floor that catches the shadow
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(1.3, 64),
+  new THREE.MeshStandardMaterial({ color: 0x2a2e36, roughness: 0.95 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
 
 // The voxel avatar
 const avatar = new Avatar();
@@ -229,7 +254,9 @@ function rebuild() {
   });
 }
 
-function updateComposition() {
+// While a slider is dragged we build with coarse 2 cm cubes (fast), and in full
+// detail when it is released.
+function updateComposition(dragging = false) {
   const fat = Number($('fat').value), muscle = Number($('muscle').value);
   $('fatOut').textContent = fmt(fat);
   $('muscleOut').textContent = fmt(muscle);
@@ -242,12 +269,16 @@ function updateComposition() {
     fat: fat / 100, muscle: muscle / 100, groups, training: $('training').value, tint: $('tint').checked,
   });
   avatar.view = $('view').value;
-  avatar.voxel = Number($('voxel').value);
+  const fine = Number($('voxel').value);
+  avatar.voxel = dragging ? Math.max(fine, 0.02) : fine;
   $('legend').innerHTML = LEGENDS[avatar.view];
   rebuild();
 }
-for (const el of [$('fat'), $('muscle'), ...groupInputs]) el.addEventListener('input', updateComposition);
-for (const id of ['training', 'tint', 'view', 'voxel']) $(id).addEventListener('change', updateComposition);
+for (const el of [$('fat'), $('muscle'), ...groupInputs]) {
+  el.addEventListener('input', () => updateComposition(true));
+  el.addEventListener('change', () => updateComposition(false));
+}
+for (const id of ['training', 'tint', 'view', 'voxel']) $(id).addEventListener('change', () => updateComposition());
 $('resetComp').addEventListener('click', () => {
   for (const el of [$('fat'), $('muscle'), ...groupInputs]) el.value = 0;
   updateComposition();

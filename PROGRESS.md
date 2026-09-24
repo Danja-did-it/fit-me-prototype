@@ -50,3 +50,19 @@
   must not count as "fat" tissue; upper belly lives in the chest segment and needs its own fat depot or a ring appears;
   muscle gain x1.2 was invisible -> x2.2.
 - Preview deploy: `npm run deploy:preview` -> /preview/ (live site untouched).
+
+## Iteration 3: realistic body (user feedback: "too unhuman", reference = realistic voxel characters)
+- New engine in `src/avatar.js`: body = smooth union of 3D shapes (signed distance field) instead of stacked tubes.
+  Base shapes (pelvis, rib cage, collarbones, skull, jaw, nose, ears, hands with thumb, feet), 24 muscle bellies
+  from origin to insertion, fat depots as thickness fields. Voxelized coarse-to-fine (4 cm cells, refine near skin),
+  left half only + mirror. Each cube bound to the bone of the nearest shape -> animations still work.
+- Realistic proportions: arm = upper 53.5 % / forearm 46.5 % of shoulder-wrist + hand 10.8 % of height
+  (fingertips mid-thigh). Face: eyes (white + iris), brows, mouth. Clothes: hems, waistband, socks, soles.
+- Rendering: ACES tone mapping, warm key light with shadows, cool fill, rim light, floor disc,
+  per-cube crease shading (ambient occlusion from filled neighbors).
+- While dragging a slider the body is built with 2 cm cubes, full detail on release.
+- Learned: coarse/fine band check vs brute force: 1.5x band = exact (28 cubes diff at 1x).
+  Muscle blend radius 1.2 cm made the surface lumpy -> 2.2 cm (+ more when muscular).
+  Strong growth made "balloons" -> thickness growth 0.5x, width 0.18x, gain factor 1.15.
+  three r186: PCFSoftShadowMap removed -> PCFShadowMap. Vite HMR reloads broke tests -> check.mjs retries.
+- Build time (headless Chrome, 1 cm): ~80-170 ms, ~13-16k cubes.
