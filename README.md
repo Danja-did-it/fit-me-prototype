@@ -43,7 +43,10 @@ Weitere Befehle:
    **Darstellung:** Ansicht *Aussehen*, *Muskelgruppen* (Farbe pro Gruppe, gelb = Fettdepot, grau = Sehne/Knochen)
    oder *Fasertypen* (dunkelrot = langsame Typ-I-Fasern, hellrot = schnelle Typ-II-Fasern).
    **Würfelgröße** 4 cm bis 0,5 cm (Standard 1 cm; 0,5 cm = ca. 70.000 Würfel, auf älteren Handys langsamer).
-4. **Bewegung** – Stehen, Gehen (auf der Stelle), Kniebeuge. Figur mit Maus/Finger drehen, zoomen mit Mausrad/zwei Fingern.
+4. **Individuell** – nach dem Front-Scan wird das Gesicht vermessen (Länge, Kiefer, Augen, Nase, Mund, Lippen, Kinn),
+   Farben übernommen (Haut, Augen, Lippen, Brauen, Haare) und Frisur + Bart geschätzt. Alles lässt sich hier korrigieren.
+   Dafür muss das Gesicht auf dem Front-Foto gut sichtbar sein (Licht von vorn, keine Sonnenbrille/Kappe).
+5. **Bewegung** – Stehen, Gehen (auf der Stelle), Kniebeuge. Figur mit Maus/Finger drehen, zoomen mit Mausrad/zwei Fingern.
 
 ## Auf dem Handy
 

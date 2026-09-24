@@ -79,3 +79,18 @@
 - Learned: objects with different property sets made the hot loop ~5x slower (V8 megamorphic access) ->
   all shapes normalized to one layout. Detail pass must only touch cells right at head/hand shapes.
 - Build 1 cm incl. detail: ~180-210 ms headless; drag preview (2 cm) ~35-70 ms.
+
+## Iteration 5: individuality (user: "detaillierter für echte Individualität")
+- `src/face.js`: head crop from pose points, scaled to 512 px, MediaPipe Face Landmarker (478 pts incl. iris)
+  + Hair Segmenter (both local, models via setup script). Measures relative to face width (1 = average):
+  face length, jaw, eye spacing/size/openness, nose width/length, mouth width, lips, chin.
+  Colors: skin (cheeks), iris, lips, brows, hair (mask average). Hairstyle: none/short/medium/long from where
+  side hair ends vs chin, volume on top/sides, fringe. Beard/mustache: darker than cheeks at chin/jaw/upper lip.
+- Head shapes are parameterized by those measures; hair volumes per style; beard shapes (full, goatee,
+  mustache) + painted stubble. Iris/brows use the scanned colors and eye position.
+- Body: limb girths from the front photo (neck, upper arm, forearm, calf) scale each limb around its bone.
+- UI "Individuell": hairstyle, fringe, beard, mustache, colors (skin, hair, eyes, lips, top, shorts);
+  prefilled from the scan, manual changes win; face measures shown as % of average.
+- Learned: MediaPipe logs "INFO: Created TensorFlow Lite XNNPACK delegate" via console.error -> routed to
+  console.info. Beard detection by brightness fails on dark/low-contrast photos -> manual override.
+  bodyFromScans scaled every key incl. objects -> now numbers only.

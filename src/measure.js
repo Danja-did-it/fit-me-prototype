@@ -82,9 +82,27 @@ export function measureFront(scan, height) {
   const armPx = (dist(px(scan, 11), px(scan, 13)) + dist(px(scan, 13), px(scan, 15)) +
                  dist(px(scan, 12), px(scan, 14)) + dist(px(scan, 14), px(scan, 16))) / 2;
 
+  // Limb girths (widths seen from the front), cut at +-9 cm around the limb so a
+  // touching body part is not counted
+  const limb = (a, b, t, side) => {
+    const pa = px(scan, a), pb = px(scan, b);
+    const p = { x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t };
+    const lim = 0.09 / k;
+    let lo = p.x - lim, hi = p.x + lim;
+    if (side !== undefined) { if (p.x < cx) hi = Math.min(hi, cx); else lo = Math.max(lo, cx); }
+    return runWidth(mask, p.y, p.x, lo, hi) * k;
+  };
+  const avg2 = (f) => (f(0) + f(1)) / 2;
+  const mouthY = (px(scan, 9).y + px(scan, 10).y) / 2;
+
   const s = height / 1.75;
   return {
     height,
+    // neck: just below the chin (60 % from shoulders up to the mouth), never wider than the jaw
+    neckWidth: clamp(runWidth(mask, sh.y - 0.6 * (sh.y - mouthY), px(scan, 0).x, px(scan, 0).x - 0.08 / k, px(scan, 0).x + 0.08 / k) * k, 0.09 * s, 0.16 * s),
+    upperArmWidth: clamp(avg2((i) => limb(11 + i, 13 + i, 0.55)), 0.065 * s, 0.17 * s),
+    forearmWidth: clamp(avg2((i) => limb(13 + i, 15 + i, 0.3)), 0.055 * s, 0.13 * s),
+    calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3, true)), 0.075 * s, 0.18 * s),
     shoulderWidth: clamp(runWidth(mask, sh.y + 0.03 * (bottom - top), cx) * k, 0.28 * s, 0.65 * s),
     waistWidth: clamp(waistPx * k, 0.20 * s, 0.60 * s),
     hipWidth: clamp(hipPx * k, 0.24 * s, 0.65 * s),
@@ -109,17 +127,23 @@ export function measureSide(scan, height) {
   };
 }
 
-// Combine: defaults <- front <- side. Missing photos keep default proportions.
+// Combine: defaults <- front <- side <- face. Missing photos keep default proportions.
 export function bodyFromScans(scans, height) {
   const s = height / 1.75;
   const body = { ...DEFAULT_BODY };
-  // scale all default widths/lengths to the user's height
-  for (const key of Object.keys(body)) if (key !== 'height' && key !== 'colors') body[key] *= s;
+  // scale all default widths/lengths (numbers only) to the user's height
+  for (const key of Object.keys(body)) if (key !== 'height' && typeof body[key] === 'number') body[key] *= s;
   body.height = height;
   if (scans.front) {
     Object.assign(body, measureFront(scans.front, height));
     if (scans.front.colors) body.colors = { ...body.colors, ...scans.front.colors };
   }
   if (scans.side) Object.assign(body, measureSide(scans.side, height));
+  const f = scans.front?.face;
+  if (f) {
+    body.face = f.measures;
+    body.look = { hair: f.hair, beard: f.beard, mustache: f.mustache };
+    body.colors = { ...body.colors, ...f.colors };
+  }
   return body;
 }

@@ -107,7 +107,19 @@ async function runScan(view, image) {
     drawScan($(view === 'front' ? 'prevFront' : 'prevSide'), image, scan);
     if (!scan) return setStatus('Keine Person erkannt. Ganzer Körper im Bild?');
     scans[view] = scan;
-    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓ – Avatar angepasst');
+    let faceText = '';
+    if (view === 'front') {
+      // face + hair on the same photo: shape of the face, real colors, hairstyle, beard
+      setStatus('Analysiere Gesicht …');
+      const { analyzeFace, drawFace } = await import('./face.js');
+      try {
+        scan.face = await analyzeFace(image, scan.landmarks);
+      } catch (e) { console.warn('face analysis failed', e); scan.face = null; }
+      if (scan.face) drawFace($('prevFace'), scan.face);
+      manual = {}; // a new scan replaces manual changes
+      faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
+    }
+    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓' + faceText + ' – Avatar angepasst');
     applyScans();
   } catch (e) {
     console.error(e);
@@ -210,9 +222,14 @@ function showMeasures(body) {
 
 function applyScans() {
   const h = Math.min(220, Math.max(120, Number(heightInput.value) || 175)) / 100;
-  avatar.body = bodyFromScans(scans, h);
+  const body = bodyFromScans(scans, h);
+  // manual choices in "Individuell" win over the scan
+  body.look = { ...body.look, ...manual.look, hair: { ...body.look.hair, ...manual.look?.hair } };
+  body.colors = { ...body.colors, ...manual.colors };
+  avatar.body = body;
   rebuild();
-  showMeasures(avatar.body);
+  showMeasures(body);
+  showLook(body);
 }
 heightInput.addEventListener('change', applyScans);
 
@@ -284,7 +301,6 @@ $('resetComp').addEventListener('click', () => {
   updateComposition();
 });
 updateComposition();
-applyScans();
 
 // ---------------------------------------------------------------------------
 // Animation mode buttons
@@ -295,3 +311,42 @@ for (const btn of document.querySelectorAll('#modes button')) {
     document.querySelectorAll('#modes button').forEach((b) => b.classList.toggle('active', b === btn));
   });
 }
+
+// ---------------------------------------------------------------------------
+// "Individuell": hairstyle, beard and colors (prefilled from the face scan)
+// ---------------------------------------------------------------------------
+let manual = {}; // user overrides: { look: {...}, colors: {...} }
+const hexColor = (c) => '#' + c.toString(16).padStart(6, '0');
+const COLOR_INPUTS = { colSkin: 'skin', colHair: 'hair', colEye: 'eye', colLip: 'lip', colShirt: 'shirt', colShorts: 'shorts' };
+
+function showLook(body) {
+  const L = body.look;
+  $('hairStyle').value = L.hair.style;
+  $('bangs').checked = !!L.hair.bangs;
+  $('beard').value = L.beard;
+  $('mustache').checked = !!L.mustache;
+  for (const [id, key] of Object.entries(COLOR_INPUTS)) $(id).value = hexColor(body.colors[key]);
+  const f = scans.front?.face;
+  if (f) {
+    const pct = (v) => Math.round(v * 100) + ' %';
+    const m = f.measures;
+    $('faceInfo').textContent = `Gesicht erkannt (100 % = Durchschnitt): Länge ${pct(m.faceLong)}, Kiefer ${pct(m.jaw)}, ` +
+      `Augenabstand ${pct(m.eyeSpacing)}, Augen ${pct(m.eyeSize)}, Nase ${pct(m.noseWidth)} breit / ${pct(m.noseLength)} lang, ` +
+      `Mund ${pct(m.mouthWidth)}, Lippen ${pct((m.lipUpper + m.lipLower) / 2)}, Kinn ${pct(m.chin)}.`;
+  }
+}
+
+function updateLook() {
+  manual.look = {
+    hair: { style: $('hairStyle').value, bangs: $('bangs').checked },
+    beard: $('beard').value,
+    mustache: $('mustache').checked,
+  };
+  manual.colors = {};
+  for (const [id, key] of Object.entries(COLOR_INPUTS)) manual.colors[key] = parseInt($(id).value.slice(1), 16);
+  // beard and eyebrows follow a manually chosen hair color
+  if (manual.colors.hair !== avatar.body.colors.hair) manual.colors.beard = manual.colors.brow = manual.colors.hair;
+  applyScans();
+}
+for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+applyScans(); // first build (defaults until a photo is scanned)

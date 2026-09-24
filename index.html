@@ -14,7 +14,7 @@
 
   <!-- Control panel -->
   <aside id="panel">
-    <h1>Fit-me <span>Prototyp · v4 Vorschau</span></h1>
+    <h1>Fit-me <span>Prototyp · v5 Vorschau</span></h1>
 
     <section>
       <h2>1 · Körper scannen</h2>
@@ -37,6 +37,7 @@
       <div class="scans">
         <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
         <figure><canvas id="prevSide"></canvas><figcaption>Seite</figcaption></figure>
+        <figure><canvas id="prevFace"></canvas><figcaption>Gesicht</figcaption></figure>
       </div>
       <p id="status" role="status">Bereit.</p>
     </section>
@@ -49,6 +50,39 @@
       <p class="hint">Deine echte Größe ist der Maßstab für alle Maße aus dem Foto.
         Front-Foto: Breiten + Längen. Seiten-Foto: Tiefe von Brust und Bauch.</p>
       <table id="measures"></table>
+    </section>
+
+    <section>
+      <h2>Individuell</h2>
+      <p class="hint" id="faceInfo">Noch kein Gesicht erkannt – Gesicht ist Durchschnitt. Front-Foto mit gut sichtbarem Gesicht wählen.</p>
+      <label class="field">Frisur
+        <select id="hairStyle">
+          <option value="none">Glatze</option>
+          <option value="short" selected>Kurz</option>
+          <option value="medium">Mittel (bis Kinn)</option>
+          <option value="long">Lang (über die Schultern)</option>
+        </select>
+      </label>
+      <label class="field">Bart
+        <select id="beard">
+          <option value="none" selected>Kein Bart</option>
+          <option value="stubble">Stoppeln</option>
+          <option value="goatee">Kinnbart</option>
+          <option value="full">Vollbart</option>
+        </select>
+      </label>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="bangs"> Pony</label>
+        <label class="check"><input type="checkbox" id="mustache"> Schnurrbart</label>
+      </div>
+      <div class="colors">
+        <label>Haut<input type="color" id="colSkin"></label>
+        <label>Haare<input type="color" id="colHair"></label>
+        <label>Augen<input type="color" id="colEye"></label>
+        <label>Lippen<input type="color" id="colLip"></label>
+        <label>Oberteil<input type="color" id="colShirt"></label>
+        <label>Hose<input type="color" id="colShorts"></label>
+      </div>
     </section>
 
     <section>

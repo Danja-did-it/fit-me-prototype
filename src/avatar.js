@@ -27,6 +27,20 @@ const COLORS = {
   shorts: 0x2d3340,
   shoe: 0xf2f2f2,
   hair: 0x3a2a20,
+  eye: 0x5a4030,   // iris
+  lip: 0xc07f70,
+  brow: 0x3a2a20,
+  beard: 0x3a2a20,
+};
+// Face shape (1 = average, the face scan changes these) and style choices
+export const DEFAULT_FACE = {
+  faceLong: 1, jaw: 1, eyeSpacing: 1, eyeSize: 1, eyeOpen: 1, noseWidth: 1, noseLength: 1,
+  mouthWidth: 1, lipUpper: 1, lipLower: 1, chin: 1,
+};
+export const DEFAULT_LOOK = {
+  hair: { style: 'short', top: 1, width: 1, bangs: false }, // style: none | short | medium | long
+  beard: 'none',                                            // none | stubble | goatee | full
+  mustache: false,
 };
 const DETAIL = {
   sole: new THREE.Color(0x2e2e2e),
@@ -61,7 +75,13 @@ export const DEFAULT_BODY = {
   bellyDepth: 0.21,    // front-to-back at the belly (side photo)
   legLength: 0.93,     // hip joint to floor
   armLength: 0.52,     // shoulder to wrist
+  neckWidth: 0.12,     // limb widths seen from the front
+  upperArmWidth: 0.095,
+  forearmWidth: 0.08,
+  calfWidth: 0.11,
   colors: COLORS,
+  face: DEFAULT_FACE,
+  look: DEFAULT_LOOK,
 };
 
 const CENTRAL = new Set(['hips', 'spine', 'chest', 'neck', 'head']);
@@ -96,12 +116,21 @@ function skeleton(b, comp) {
   L.forearm = L.forearmOnly + L.hand;
   const k = {
     s, u, L,
+    face: { ...DEFAULT_FACE, ...b.face },
+    look: { ...DEFAULT_LOOK, ...b.look, hair: { ...DEFAULT_LOOK.hair, ...b.look?.hair } },
     shoulderR: b.shoulderWidth / 2,
     waistR: b.waistWidth / 2,
     hipR: b.hipWidth / 2,
     chestZ: b.chestDepth / 2,
     bellyZ: b.bellyDepth / 2,
     thighR: (b.thighWidth / 2) * 0.72,           // muscles are added on top
+    // girth factors (1 = average) that widen/narrow a whole limb around its bone
+    girth: {
+      neck: b.neckWidth / (0.12 * s),
+      shoulder: b.upperArmWidth / (0.095 * s),
+      elbow: b.forearmWidth / (0.08 * s),
+      knee: b.calfWidth / (0.11 * s),
+    },
   };
   const ribX = Math.max(k.waistR * 1.08, k.shoulderR - 0.095 * s);
   k.shoulderJointX = Math.max(k.shoulderR - 0.05 * s, ribX + 0.02 * s);
@@ -479,16 +508,25 @@ export class Avatar {
     let color = c.skin, special = null;
     if (bone === 'head') {
       // material comes from the nearest shape (tag), plus a few painted details
-      if (tag === 'hair' || p.y > S(0.2)) color = c.hair;
-      else if (tag === 'lip') special = DETAIL.lip;
+      const look = k.look, E = k.eye;
+      if (tag === 'hair' || (p.y > S(0.2) && look.hair.style !== 'none')) color = c.hair;
+      else if (tag === 'beard') color = c.beard;
+      else if (tag === 'lip') color = c.lip;
       else if (tag === 'eye') {
-        const d = Math.hypot(Math.abs(p.x) - S(0.031), p.y - S(0.114));
-        special = d < S(0.0035) ? DETAIL.pupil : d < S(0.0075) ? DETAIL.iris : DETAIL.eyeWhite;
+        const d = Math.hypot(Math.abs(p.x) - E.x, p.y - E.y);
+        if (d < E.r * 0.28) special = DETAIL.pupil;
+        else if (d < E.r * 0.6) color = c.eye;
+        else special = DETAIL.eyeWhite;
       }
       const bx = Math.abs(p.x), by = p.y;
-      // eyebrows: thin arch, highest above the middle of the eye
-      const arch = S(0.131) + S(0.004) * Math.cos(((bx - S(0.031)) / S(0.02)) * 1.2);
-      if (p.z > S(0.065) && bx > S(0.013) && bx < S(0.05) && Math.abs(by - arch) < S(0.0035)) color = c.hair;
+      // eyebrows: thin arch above the eye, in the scanned brow color
+      const arch = E.y + S(0.017) + S(0.004) * Math.cos(((bx - E.x) / S(0.02)) * 1.2);
+      if (p.z > S(0.065) && bx > E.x - S(0.018) && bx < E.x + S(0.019) && Math.abs(by - arch) < S(0.0035)) color = c.brow;
+      // stubble: darker skin on jaw, chin and upper lip
+      if (look.beard === 'stubble' && tag !== 'lip' && tag !== 'eye' && p.z > -S(0.01) && p.y < S(0.075)) {
+        out.set(color).lerp(new THREE.Color(c.beard), 0.35);
+        return out.multiplyScalar(shade * jitter);
+      }
     } else if (bone === 'elbow' && (tag === 'finger' || tag === 'hand')) {
       // fingernails: back of the fingertip (outside = +x on the left hand before mirroring)
       if (tag === 'finger' && P.b) {

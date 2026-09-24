@@ -30,7 +30,7 @@ button.active { background: var(--accent); color: #0b1a22; border-color: var(--a
 #countdown { position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 64px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; pointer-events: none; }
 
-.scans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.scans { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 6px; }
 .scans figure { margin: 0; }
 .scans canvas { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #0f1115;
   border: 1px solid var(--line); border-radius: 8px; display: block; }
@@ -58,6 +58,10 @@ details { margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 8px;
 details summary { cursor: pointer; color: var(--muted); }
 details[open] summary { margin-bottom: 8px; }
 .chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.colors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+.colors label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 12px; }
+.colors input { width: 100%; height: 32px; border: 1px solid var(--line); border-radius: 6px; background: none; padding: 0; }
 
 @media (max-width: 760px) {
   body { flex-direction: column; }

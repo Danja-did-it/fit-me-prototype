@@ -146,35 +146,72 @@ export function bodyParts(k) {
   dep('neck', [0, S(0.03), S(0.03)], [S(0.05), S(0.04), S(0.04)], 0.015);                                  // double chin
 
   // ---- head (bone 'head', origin = chin height, face looks to +z) ----
-  // Proportions of an adult head (23 cm): mouth 4.5 cm, nose tip 7.5 cm, eyes 11.5 cm,
-  // brow 13.5 cm, hairline 17 cm above the chin.
+  // Proportions of an average adult head (23 cm): mouth 4.5 cm, nose tip 7.5 cm, eyes 11.5 cm,
+  // brow 13.5 cm, hairline 17 cm above the chin. The face scan (k.face, 1 = average)
+  // moves and scales the features; k.look chooses hairstyle and facial hair.
+  const F = k.face, look = k.look;
   const H = { zone: 'detail' };
   const soft = { ...H, k: 0.02 }, crisp = { ...H, k: 0.006 };
+  const EY = 0.114;                                            // eye height
+  const Y = (y) => (y >= EY ? y : EY - (EY - y) * F.faceLong); // lower face longer / shorter
+  const ex = 0.031 * F.eyeSpacing, er = 0.0125 * F.eyeSize;    // eye position + size
+  k.eye = { x: S(ex), y: S(EY), r: S(er) };                    // used for coloring the iris
   ell('head', P3(0, 0.145, -0.015), P3(0.074, 0.088, 0.098), false, soft);            // cranium
   ell('head', P3(0, 0.12, -0.062), P3(0.058, 0.058, 0.045), false, soft);             // back of the head
   ell('head', P3(0, 0.152, 0.03), P3(0.064, 0.048, 0.058), false, soft);              // forehead
-  ell('head', P3(0, 0.085, 0.032), P3(0.054, 0.05, 0.056), false, soft);              // mid face
-  cone('head', P3(0.05, 0.05, -0.012), P3(0.018, 0.01, 0.07), S(0.016), S(0.016), true, { ...H, k: 0.015 }); // jaw (angle -> chin)
-  ell('head', P3(0, 0.016, 0.077), P3(0.022, 0.017, 0.018), false, { ...H, k: 0.01 });  // chin
+  ell('head', P3(0, Y(0.085), 0.032), P3(0.054 * Math.sqrt(F.jaw), 0.05 * F.faceLong, 0.056), false, soft); // mid face
+  const chinY = EY - (EY - 0.016) * F.faceLong * (0.85 + 0.15 * F.chin);
+  cone('head', P3(0.05 * F.jaw, Y(0.05), -0.012), P3(0.018, chinY - 0.006, 0.07), S(0.016), S(0.016), true, { ...H, k: 0.015 }); // jaw
+  ell('head', P3(0, chinY, 0.077), P3(0.022 * Math.sqrt(F.jaw), 0.017 * F.chin, 0.018), false, { ...H, k: 0.01 });  // chin
   ell('head', P3(0.047, 0.098, 0.047), P3(0.02, 0.015, 0.03), true, { ...H, k: 0.012 }); // cheekbones
-  ell('head', P3(0.038, 0.068, 0.052), P3(0.026, 0.028, 0.026), true, { ...H, k: 0.015 }); // cheeks
+  ell('head', P3(0.038 * Math.sqrt(F.jaw), Y(0.068), 0.052), P3(0.026, 0.028, 0.026), true, { ...H, k: 0.015 }); // cheeks
   ell('head', P3(0, 0.132, 0.08), P3(0.05, 0.011, 0.02), false, { ...H, k: 0.01 });   // brow ridge
-  cut('head', P3(0.031, 0.114, 0.088), P3(0.017, 0.011, 0.018), true, crisp);          // eye sockets
-  ell('head', P3(0.031, 0.114, 0.071), P3(0.0125, 0.0125, 0.0125), true, { ...H, k: 0.003, tag: 'eye' }); // eyeballs
-  ell('head', P3(0.031, 0.122, 0.077), P3(0.016, 0.005, 0.011), true, { ...H, k: 0.004 }); // upper lids
-  ell('head', P3(0.031, 0.105, 0.076), P3(0.014, 0.004, 0.009), true, { ...H, k: 0.004 }); // lower lids
-  cone('head', P3(0, 0.126, 0.088), P3(0, 0.082, 0.112), S(0.007), S(0.0105), false, crisp); // nose bridge
-  ell('head', P3(0, 0.077, 0.108), P3(0.011, 0.0095, 0.012), false, { ...H, k: 0.005 }); // nose tip
-  ell('head', P3(0.012, 0.075, 0.094), P3(0.0075, 0.0065, 0.008), true, { ...H, k: 0.004 }); // nostril wings
-  cut('head', P3(0.0065, 0.07, 0.1), P3(0.0035, 0.003, 0.004), true, { ...H, k: 0.002 }); // nostrils
-  ell('head', P3(0, 0.053, 0.089), P3(0.019, 0.0045, 0.0065), false, { ...H, k: 0.004, tag: 'lip' }); // upper lip
-  ell('head', P3(0, 0.0435, 0.087), P3(0.017, 0.0055, 0.007), false, { ...H, k: 0.004, tag: 'lip' }); // lower lip
-  cut('head', P3(0, 0.0485, 0.096), P3(0.018, 0.0012, 0.007), false, { ...H, k: 0.002 }); // mouth line
+  cut('head', P3(ex, EY, 0.088), P3(0.017 * F.eyeSize, 0.011 * F.eyeSize, 0.018), true, crisp); // eye sockets
+  ell('head', P3(ex, EY, 0.071), P3(er, er, er), true, { ...H, k: 0.003, tag: 'eye' });           // eyeballs
+  const lid = 0.008 * F.eyeOpen * F.eyeSize;
+  ell('head', P3(ex, EY + lid, 0.077), P3(0.016 * F.eyeSize, 0.005, 0.011), true, { ...H, k: 0.004 }); // upper lids
+  ell('head', P3(ex, EY - lid * 1.1, 0.076), P3(0.014 * F.eyeSize, 0.004, 0.009), true, { ...H, k: 0.004 }); // lower lids
+  const noseTipY = EY - (EY - 0.077) * F.noseLength * F.faceLong;
+  cone('head', P3(0, 0.126, 0.088), P3(0, noseTipY + 0.005, 0.112), S(0.007), S(0.0105 * F.noseWidth), false, crisp); // nose bridge
+  ell('head', P3(0, noseTipY, 0.108), P3(0.011 * F.noseWidth, 0.0095, 0.012), false, { ...H, k: 0.005 }); // nose tip
+  ell('head', P3(0.012 * F.noseWidth, noseTipY - 0.002, 0.094), P3(0.0075, 0.0065, 0.008), true, { ...H, k: 0.004 }); // nostril wings
+  cut('head', P3(0.0065 * F.noseWidth, noseTipY - 0.007, 0.1), P3(0.0035, 0.003, 0.004), true, { ...H, k: 0.002 }); // nostrils
+  const mw = F.mouthWidth, mouthY = Y(0.0485);
+  ell('head', P3(0, mouthY + 0.0045 * F.lipUpper, 0.089), P3(0.019 * mw, 0.0045 * F.lipUpper, 0.0065), false, { ...H, k: 0.004, tag: 'lip' }); // upper lip
+  ell('head', P3(0, mouthY - 0.005 * F.lipLower, 0.087), P3(0.017 * mw, 0.0055 * F.lipLower, 0.007), false, { ...H, k: 0.004, tag: 'lip' });  // lower lip
+  cut('head', P3(0, mouthY, 0.096), P3(0.018 * mw, 0.0012, 0.007), false, { ...H, k: 0.002 }); // mouth line
   ell('head', P3(0.077, 0.112, -0.01), P3(0.009, 0.031, 0.019), true, { ...H, k: 0.005, tag: 'ear' }); // ears
   cut('head', P3(0.084, 0.108, -0.006), P3(0.0045, 0.016, 0.009), true, { ...H, k: 0.003 }); // ear hollow
-  ell('head', P3(0, 0.16, -0.03), P3(0.08, 0.086, 0.1), false, { ...H, k: 0.012, tag: 'hair' });   // hair on top
-  ell('head', P3(0, 0.105, -0.07), P3(0.07, 0.06, 0.05), false, { ...H, k: 0.012, tag: 'hair' });  // hair at the back
   dep('head', P3(0.04, 0.066, 0.05), P3(0.03, 0.03, 0.03), 0.01, true);                // cheeks (fat)
+
+  // hair: volume from the scan (top / width), length = style
+  const hair = look.hair, HT = { ...H, k: 0.012, tag: 'hair' };
+  if (hair.style !== 'none') {
+    const vt = 0.01 * (hair.top - 1), vw = 0.008 * (hair.width - 1);
+    ell('head', P3(0, 0.16, -0.03), P3(0.08 + vw, 0.086 + vt, 0.1), false, HT);        // on top
+    ell('head', P3(0, 0.105, -0.07), P3(0.07 + vw, 0.06, 0.05), false, HT);            // at the back
+    if (hair.bangs) ell('head', P3(0, 0.168, 0.068), P3(0.058, 0.022, 0.03), false, HT); // fringe
+    if (hair.style === 'medium' || hair.style === 'long') {
+      ell('head', P3(0.072 + vw, 0.075, -0.02), P3(0.02, 0.075, 0.07), true, HT);     // sides over the ears
+      ell('head', P3(0, 0.05, -0.078), P3(0.066 + vw, 0.085, 0.045), false, HT);       // back down to the neck
+    }
+    if (hair.style === 'long') {
+      cone('head', P3(0, 0.07, -0.08), P3(0, -0.2, -0.095), S(0.06 + vw), S(0.05), false, HT);        // down the back
+      cone('head', P3(0.055, 0.06, -0.05), P3(0.075, -0.14, -0.06), S(0.028), S(0.022), true, HT);    // side strands
+    }
+  }
+  // facial hair
+  const BT = { ...H, k: 0.006, tag: 'beard' };
+  if (look.beard === 'full') {
+    cone('head', P3(0.053 * F.jaw, Y(0.056), -0.008), P3(0.02, chinY - 0.008, 0.075), S(0.02), S(0.021), true, BT); // along the jaw
+    ell('head', P3(0, chinY - 0.004, 0.081), P3(0.027, 0.023, 0.021), false, BT);                                    // chin
+    ell('head', P3(0.04 * Math.sqrt(F.jaw), Y(0.056), 0.056), P3(0.024, 0.022, 0.024), true, BT);                    // lower cheeks
+  } else if (look.beard === 'goatee') {
+    ell('head', P3(0, chinY, 0.082), P3(0.018, 0.021, 0.02), false, BT);
+  }
+  if (look.mustache || look.beard === 'full') {
+    ell('head', P3(0, mouthY + 0.012, 0.093), P3(0.02 * mw, 0.0045, 0.0065), false, BT);
+  }
 
   // ---- upper arm (bone 'shoulder', arm points down) ----
   const Lu = L.upperArm;
@@ -248,5 +285,16 @@ export function bodyParts(k) {
   ell('ankle', [S(0.004), -L.foot + S(0.034), S(0.055)], [S(0.043), S(0.034), S(0.125)]);
   ell('ankle', [0, -L.foot + S(0.032), -S(0.03)], [S(0.034), S(0.032), S(0.036)]);   // heel
 
+  // Individual limb girth from the scan: scale everything on that bone sideways
+  // (x and z) around the bone axis. Hands keep their size.
+  for (const rec of [...base, ...muscles, ...fat]) {
+    const g = k.girth?.[rec.bone];
+    if (!g || g === 1 || rec.tag === 'hand' || rec.tag === 'finger') continue;
+    const sc = (v) => v && [v[0] * g, v[1], v[2] * g];
+    rec.c = sc(rec.c); rec.a = sc(rec.a); rec.b = sc(rec.b);
+    if (rec.type !== 'muscle' && rec.r) rec.r = [rec.r[0] * g, rec.r[1], rec.r[2] * g];
+    if (rec.type === 'cone') { rec.ra *= g; rec.rb *= g; }
+    if (rec.type === 'muscle') { rec.w *= g; rec.th *= g; }
+  }
   return { base, muscles, fat };
 }
