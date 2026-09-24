@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#14161a" />
+  <title>Fit-me Prototype</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22%3E%3Crect width=%221%22 height=%221%22 fill=%22%234fc3f7%22/%3E%3C/svg%3E" />
+  <script type="module" crossorigin src="./assets/index-B8sMYMGp.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Cmb-l8a0.css">
+</head>
+<body>
+  <!-- 3D view -->
+  <div id="stage"></div>
+
+  <!-- Control panel -->
+  <aside id="panel">
+    <h1>Fit-me <span>Prototyp</span></h1>
+
+    <section>
+      <h2>1 · Körper scannen</h2>
+      <p class="hint">Ganzer Körper im Bild, eng anliegende Kleidung, Arme leicht vom Körper weg.
+        Alles wird nur auf diesem Gerät berechnet – kein Upload.</p>
+      <div class="camera" hidden>
+        <video id="video" playsinline muted></video>
+        <div id="countdown"></div>
+      </div>
+      <div class="row">
+        <button id="camBtn">Kamera starten</button>
+        <button id="snapFront" disabled>Front aufnehmen</button>
+        <button id="snapSide" disabled>Seite aufnehmen</button>
+        <button id="flipCam" hidden>Kamera wechseln</button>
+      </div>
+      <div class="row">
+        <label class="btn">Front-Foto wählen<input type="file" accept="image/*" id="fileFront" hidden></label>
+        <label class="btn">Seiten-Foto wählen<input type="file" accept="image/*" id="fileSide" hidden></label>
+      </div>
+      <div class="scans">
+        <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
+        <figure><canvas id="prevSide"></canvas><figcaption>Seite</figcaption></figure>
+      </div>
+      <p id="status" role="status">Bereit.</p>
+    </section>
+
+    <section>
+      <h2>2 · Maße</h2>
+      <label class="field">Körpergröße
+        <input type="number" id="height" value="175" min="120" max="220" step="1" inputmode="numeric"> cm
+      </label>
+      <p class="hint">Deine echte Größe ist der Maßstab für alle Maße aus dem Foto.
+        Front-Foto: Breiten + Längen. Seiten-Foto: Tiefe von Brust und Bauch.</p>
+      <table id="measures"></table>
+    </section>
+
+    <section>
+      <h2>3 · Körper verändern</h2>
+      <label class="slider">
+        <span>Körperfett <output id="fatOut">0 %</output></span>
+        <input type="range" id="fat" min="-100" max="100" value="0" step="5">
+      </label>
+      <label class="slider">
+        <span>Muskeln <output id="muscleOut">0 %</output></span>
+        <input type="range" id="muscle" min="-100" max="100" value="0" step="5">
+      </label>
+      <label class="field">Training
+        <select id="training">
+          <option value="strength">Kraft (schnelle Fasern wachsen stark)</option>
+          <option value="mixed" selected>Gemischt</option>
+          <option value="endurance">Ausdauer (wenig Wachstum)</option>
+        </select>
+      </label>
+      <details id="groupPanel">
+        <summary>Einzelne Muskelgruppen</summary>
+        <div id="groupSliders"></div>
+      </details>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="tint" checked> Veränderung einfärben</label>
+        <button id="resetComp">Zurücksetzen</button>
+      </div>
+      <p class="hint legend" id="legend"></p>
+    </section>
+
+    <section>
+      <h2>Darstellung</h2>
+      <label class="field">Ansicht
+        <select id="view">
+          <option value="look">Aussehen</option>
+          <option value="groups">Muskelgruppen</option>
+          <option value="fibers">Fasertypen (langsam / schnell)</option>
+        </select>
+      </label>
+      <label class="field">Würfelgröße
+        <select id="voxel">
+          <option value="0.04">4 cm (grob)</option>
+          <option value="0.02">2 cm</option>
+          <option value="0.015">1,5 cm</option>
+          <option value="0.01" selected>1 cm</option>
+          <option value="0.0075">0,75 cm</option>
+          <option value="0.005">0,5 cm (sehr fein, langsamer)</option>
+        </select>
+      </label>
+      <p class="hint" id="stats"></p>
+    </section>
+
+    <section>
+      <h2>4 · Bewegung</h2>
+      <div class="row" id="modes">
+        <button data-mode="idle" class="active">Stehen</button>
+        <button data-mode="walk">Gehen</button>
+        <button data-mode="squat">Kniebeuge</button>
+      </div>
+    </section>
+  </aside>
+</body>
+</html>
