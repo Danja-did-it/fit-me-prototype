@@ -116,7 +116,9 @@ export function measureFront(scan, height) {
     hipWidth: clamp(hipPx * k, 0.17 * height, 0.26 * height),
     thighWidth: clamp(avg2((i) => limb(23 + i, 25 + i, 0.3)), 0.07 * height, 0.12 * height),
     legLength: clamp((bottom - hip.y) * k, 0.42 * height, 0.60 * height),
-    armLength: clamp(armPx * k, 0.40 * s, 0.70 * s),
+    // MediaPipe's shoulder / wrist points sit slightly inside the joint chain: the landmark arm is
+    // 2.2 % shorter than the real one (6 virtual people, men and women alike, scripts/validate.mjs)
+    armLength: clamp((armPx * k) / 0.978, 0.40 * s, 0.70 * s),
   };
 }
 

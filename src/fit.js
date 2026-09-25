@@ -113,7 +113,9 @@ export function measureModel(av, shape) {
   };
   let waist = Infinity;
   for (let t = 0.45; t <= 0.85; t += 0.05) waist = Math.min(waist, extent(ys - t * (ys - yh), torso) || Infinity);
-  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  // arm length in the picture plane (x, y), like the landmark distances on the front photo:
+  // the elbow is slightly bent forward, a 3D length would be longer than what the photo sees
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
   const mouthY = (W.eyeL[1] + W.eyeR[1]) / 2 - 0.07 * (H / 1.75);
   const avg = (f) => (f('L') + f('R')) / 2;
   return {

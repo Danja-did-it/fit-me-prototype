@@ -204,3 +204,7 @@
      model rows): with the true legs the leg error was 0.0 but profile errors higher. Length phases now only look at
      the measured lengths. Result (6 people): leg 2.8 -> 0.4 cm, shoulder 1.5 -> 1.0, hip 1.1 -> 0.6, neck 1.7 -> 1.0,
      belly 0.8 -> 0.5; thigh 1.0 -> 1.2, waist 0.5 -> 0.6. Next: arm length always 0.7-1.9 cm short.
+- Loop round 9 (v18): arm length always 0.7-1.9 cm short. The fit followed the photo exactly; the photo itself was short:
+  MediaPipe's shoulder/wrist points sit inside the joint chain (landmark arm 2.2 % shorter, men and women alike) ->
+  photo arm length / 0.978. Model arm length now also measured in the picture plane (x, y) like the photo landmarks.
+  Result: arm 1.4 -> 0.2 cm, others unchanged (leg 0.5, hip 0.5, shoulder 1.1). Open: upper arm width 1.7, chest depth 1.3.

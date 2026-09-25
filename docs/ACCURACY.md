@@ -65,3 +65,11 @@ Mean absolute error (cm), 6 virtual people:
 
 Causes: hip landmark offset differs by sex (male -0.7 %, female +1.2 % of height); the length fit phases were also
 pulled by width profiles. See PROGRESS.md loop round 8.
+
+## v18: arm length
+
+| | shoulder | waist | hip | thigh | calf | upper arm | neck | leg | arm | chest d. | belly d. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| v18 | 1.1 | 0.6 | 0.5 | 1.2 | 0.4 | 1.7 | 0.9 | 0.5 | **0.2** | 1.3 | 0.6 |
+
+The landmark arm (shoulder -> elbow -> wrist) is 2.2 % shorter than the joint chain; corrected in measure.js.
