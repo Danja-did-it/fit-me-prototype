@@ -219,3 +219,9 @@
   (pecs, shoulder blades) sit off-center, closer to the camera (~5 % bigger at 2.75 m); navel/spine are centered.
   The fit now measures the model like the side photo: whole outline + depth x D/(D - |x|), D = 2.75 m (scan guide
   2.5-3 m); the true torso depth is still reported without. Chest 1.2 -> 0.7 cm. All body measures now <= 1.0 cm.
+- Loop round 12 (v21): bent knees/elbows showed shingled cubes with gaps. Cause: linear blend skinning applied the
+  blended matrix to the whole cube; blending two rotations also SHRINKS (~0.7 at 90 deg). Now the blended matrix only
+  moves the cube center, the corners turn with the pure rotation (columns normalized) and grow by 1/sqrt(shrink)
+  at strong bends. Knee in the deep squat much more closed (docs/screenshots/v21-squat-knee.png); stronger growth
+  (1/shrink) did not help further - the last slits sit on the skin fold itself. Standing pose unchanged, accuracy
+  unchanged (all <= 1.1 cm).

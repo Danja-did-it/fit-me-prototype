@@ -149,23 +149,28 @@ attribute vec4 skinW;
 uniform mat4 boneM[${JOINT_NAMES.length}];
 mat4 cubeSkin() {
   return boneM[int(skinJ.x)] * skinW.x + boneM[int(skinJ.y)] * skinW.y + boneM[int(skinJ.z)] * skinW.z + boneM[int(skinJ.w)] * skinW.w;
+}
+// The blended matrix moves the cube CENTER. Blending rotations also shrinks (at a 90 deg knee
+// ~0.7), which made the cubes small with gaps between them. So the corners only turn with the
+// pure rotation (columns normalized) and the cube grows a little where the joint bends.
+vec3 skinCube(vec3 corner) {
+  mat4 S = cubeSkin();
+  vec4 c = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  vec3 o = (instanceMatrix * vec4(corner, 1.0)).xyz - c.xyz;
+  mat3 R = mat3(S);
+  vec3 L = vec3(length(R[0]), length(R[1]), length(R[2]));
+  R = mat3(R[0] / L.x, R[1] / L.y, R[2] / L.z);
+  float g = inversesqrt(clamp(min(L.x, min(L.y, L.z)), 0.4, 1.0));
+  return (S * c).xyz + R * o * g;
 }`;
-    const project = `vec4 mvPosition = vec4(transformed, 1.0);
-#ifdef USE_INSTANCING
-mvPosition = instanceMatrix * mvPosition;
-#endif
-mvPosition = modelViewMatrix * (cubeSkin() * mvPosition);
+    const project = `vec4 mvPosition = modelViewMatrix * vec4(skinCube(transformed), 1.0);
 gl_Position = projectionMatrix * mvPosition;`;
     const inject = (shader, normals) => {
       shader.uniforms.boneM = this.boneUniform;
       let v = shader.vertexShader.replace('#include <common>', '#include <common>\n' + skinChunk)
         .replace('#include <project_vertex>', project)
         // shadows are looked up at the moved position too
-        .replace('#include <worldpos_vertex>', `vec4 worldPosition = vec4(transformed, 1.0);
-#ifdef USE_INSTANCING
-worldPosition = instanceMatrix * worldPosition;
-#endif
-worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
+        .replace('#include <worldpos_vertex>', `vec4 worldPosition = modelMatrix * vec4(skinCube(transformed), 1.0);`);
       // smooth light: blend each cube face normal with the real mesh normal
       if (normals) v = v.replace('#include <beginnormal_vertex>',
         'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, 0.85));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
