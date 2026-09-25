@@ -81,3 +81,11 @@ The landmark arm (shoulder -> elbow -> wrist) is 2.2 % shorter than the joint ch
 | v19 | 0.9 | 0.4 | 0.8 | 0.8 | 0.4 | **0.5** | 0.9 | 0.5 | 0.2 | 1.3 | 0.6 |
 
 MediaPipe's shoulder / elbow points sit ~1.5-2 cm inside the joints; the limb center line is corrected sideways.
+
+## v20: chest depth (side photo perspective)
+
+| | shoulder | waist | hip | thigh | calf | upper arm | neck | leg | arm | chest d. | belly d. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| v20 | 1.0 | 0.4 | 0.9 | 0.8 | 0.4 | 0.6 | 1.0 | 0.5 | 0.2 | **0.7** | 0.7 |
+
+Remaining +0.6 cm chest bias: the camera at hip height looks up at the chest (not modelled).

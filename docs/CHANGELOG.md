@@ -25,5 +25,6 @@ Screenshots: `docs/screenshots/`.
 | v17 | 26.09.2026 | Beinlänge: Fehler 2,8 → 0,4 cm (Hüftpunkt je Geschlecht kalibriert, Längen nicht mehr von Breiten-Profilen verzogen); Schulter, Hüfte, Hals ebenfalls genauer | – |
 | v18 | 26.09.2026 | Armlänge: Fehler 1,4 → 0,2 cm (MediaPipe-Armpunkte liegen 2,2 % innerhalb der Gelenkkette – korrigiert) | – |
 | v19 | 26.09.2026 | Oberarmbreite: Fehler 1,6 → 0,5 cm, Oberschenkel 0,8 cm; Gewicht wird nicht mehr zu hoch geschätzt (seitliche Kalibrierung der Gelenkpunkte) | – |
+| v20 | 26.09.2026 | Brusttiefe: Fehler 1,2 → 0,7 cm (Perspektive des Seitenfotos wird am Modell nachgebildet) – alle Körpermaße jetzt ≤ 1 cm | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

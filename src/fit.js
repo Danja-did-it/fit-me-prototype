@@ -61,7 +61,9 @@ const X_OFFSET = { shoulder: -0.0042, elbow: -0.006, hand: -0.003, hip: -0.0056 
 export const landmarkOffset = (key, gender = 0.5) =>
   LEG_OFFSET[key] ? LEG_OFFSET[key][0] + (LEG_OFFSET[key][1] - LEG_OFFSET[key][0]) * gender : LANDMARK_OFFSET[key];
 
-export function measureModel(av, shape) {
+// silhouette: side depths like the side photo sees them (arms included - at chest height the upper
+// arms are part of the outline). The fit uses it; the true torso depth is measured without.
+export function measureModel(av, shape, { silhouette = false } = {}) {
   const { pos } = shape;
   const W = {};
   const Hh = av.body.height;
@@ -73,6 +75,7 @@ export function measureModel(av, shape) {
   const J = av.vertJoint, N = 13380, H = av.body.height;
   const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, yh = (W.hipL[1] + W.hipR[1]) / 2;
   const torso = (v) => J[v] === 'hips' || J[v] === 'spine' || J[v] === 'chest';
+  const side = silhouette ? () => true : torso; // the photo outline contains everything at that height
   // Exact cross-sections: every triangle crossing height y gives two contour points.
   // Triangles are sorted into 1 cm height buckets first, so a slice only checks a few.
   const F = av.H.faces, nT = F.length / 3, B = 0.01;
@@ -98,9 +101,14 @@ export function measureModel(av, shape) {
     }
   };
   // x (axis 0) or z (axis 2) extent of the cross-section at height y
+  // Side photo perspective: points beside the body center are closer to the camera and look
+  // bigger (scan guide: 2.5-3 m away). Chest front/back (pecs, shoulder blades) sit off-center,
+  // so the side photo sees the chest ~5 % deeper than it is; the belly (navel, spine) not.
+  const CAM = 2.75;
   const extent = (y, test, axis = 0) => {
     let lo = Infinity, hi = -Infinity;
-    slice(y, test, (x, z) => { const c = axis === 0 ? x : z; if (c < lo) lo = c; if (c > hi) hi = c; });
+    const persp = silhouette && axis === 2;
+    slice(y, test, (x, z) => { const c = axis === 0 ? x : persp ? z * CAM / (CAM - Math.abs(x)) : z; if (c < lo) lo = c; if (c > hi) hi = c; });
     return hi > lo ? hi - lo : 0;
   };
   const lerpY = (a, b, t) => a[1] + (b[1] - a[1]) * t;
@@ -136,11 +144,11 @@ export function measureModel(av, shape) {
     upperArmWidth: avg((S) => limb('shoulder' + S, W['shoulder' + S], W['elbow' + S], 0.55)),
     forearmWidth: avg((S) => limb('elbow' + S, W['elbow' + S], W['hand' + S], 0.3)),
     calfWidth: avg((S) => limb('knee' + S, W['knee' + S], W['ankle' + S], 0.3)),
-    chestDepth: extent(ys - 0.25 * (ys - yh), torso, 2),
-    bellyDepth: extent(ys - 0.75 * (ys - yh), torso, 2),
+    chestDepth: extent(ys - 0.25 * (ys - yh), side, 2),
+    bellyDepth: extent(ys - 0.75 * (ys - yh), side, 2),
     // outline profiles at the same relative heights as on the photo
     pTorso: TORSO_T.map((t) => extent(yh + (ys - yh) * t, torso)),
-    pTorsoD: TORSO_T.map((t) => extent(yh + (ys - yh) * t, torso, 2)),
+    pTorsoD: TORSO_T.map((t) => extent(yh + (ys - yh) * t, side, 2)),
     pThigh: LEG_T.map((t) => avg((S) => limb('hip' + S, W['hip' + S], W['knee' + S], t))),
     pCalf: LEG_T.map((t) => avg((S) => limb('knee' + S, W['knee' + S], W['ankle' + S], t))),
     pThighD: LEG_T.map((t) => avg((S) => extent(lerpY(W['hip' + S], W['knee' + S], t), (v) => J[v] === 'hip' + S, 2))),
@@ -166,7 +174,7 @@ export function fitToScan(av, target, keys) {
   };
   const cost = (use = keys) => {
     apply();
-    const m = measureModel(av, av.shape());
+    const m = measureModel(av, av.shape(), { silhouette: true });
     let c = 0;
     for (const k of use) {
       if (k.startsWith('p')) { // profile: average relative error over its points

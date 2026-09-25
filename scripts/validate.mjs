@@ -102,7 +102,7 @@ const result = await page.evaluate(async (people) => {
     }
     const row = { gender: gender ? 'm' : 'f', height: Math.round(height * 100) };
     for (const k of KEYS) row[k] = +((fitted[k] - truth[k]) * 100).toFixed(1);
-    for (const k of ['legLength', 'armLength', 'hipWidth', 'thighWidth', 'upperArmWidth']) row['photo_' + k] = +((window.avatar.body[k] - truth[k]) * 100).toFixed(1);
+    for (const k of ['legLength', 'armLength', 'hipWidth', 'thighWidth', 'upperArmWidth', 'chestDepth', 'bellyDepth']) row['photo_' + k] = +((window.avatar.body[k] - truth[k]) * 100).toFixed(1);
     row.fitLegs = +(av.fit.local['legs/measure-upperleg-height'] || 0).toFixed(2); row.fitW = +av.fit.weight.toFixed(2); row.trueW = +truthFit.weight.toFixed(2);
     rows.push(row);
   }

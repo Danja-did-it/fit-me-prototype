@@ -214,3 +214,8 @@
   center line too far in -> "2 x center line to outer edge" too wide. Applied in full it over-corrected (arms 1.8 cm too
   thin); half for the arm, full at the hip, none below the knee validates best. Result: upper arm 1.6 -> 0.5, thigh
   1.0 -> 0.8, shoulder 1.1 -> 0.9 cm, weight now close to the truth (5 of 6). Open: chest depth 1.3 cm.
+- Loop round 11 (v20): chest depth 1.3 cm, always too deep. New photo columns in validate.mjs showed the SIDE PHOTO
+  itself +0.3..+1.9 cm (belly right). Arms in the outline: tested, no effect. Cause: perspective - chest front/back
+  (pecs, shoulder blades) sit off-center, closer to the camera (~5 % bigger at 2.75 m); navel/spine are centered.
+  The fit now measures the model like the side photo: whole outline + depth x D/(D - |x|), D = 2.75 m (scan guide
+  2.5-3 m); the true torso depth is still reported without. Chest 1.2 -> 0.7 cm. All body measures now <= 1.0 cm.
