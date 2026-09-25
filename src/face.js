@@ -111,21 +111,39 @@ export async function analyzeFace(image, pose) {
     chin: clamp(dist(L[17], L[152]) / fh / 0.21, 0.8, 1.25),
   };
 
-  // ---- white balance: the white of the eye is (almost) neutral white. Its color on
-  // the photo tells us the color of the light; we correct all colors by it.
-  const sclera = [];
+  // ---- white balance: the white of the eye is almost neutral (slightly warm). Its color on
+  // the photo tells us the color of the light; we correct all colors by it - carefully:
+  // only clearly bright, nearly colorless pixels count (not lids / lashes / skin), both eyes
+  // must agree, the correction is capped at +-10 % and applied half-way.
+  const skinRef = sample(pixels, L[50], Math.max(3, fw * 0.035));
+  const skinLum = skinRef == null ? 120 : lum(skinRef);
+  const scleraPixel = ([R, G, B]) => {
+    const l = 0.299 * R + 0.587 * G + 0.114 * B;
+    return l > skinLum * 1.15 && l > 110 && Math.max(R, G, B) - Math.min(R, G, B) < 55;
+  };
+  const perEye = [];
   for (const [iris, a, b] of [[468, 133, 33], [473, 362, 263]]) {
+    const eyeSamples = [];
     for (const corner of [a, b]) {
       const p = { x: L[iris].x + (L[corner].x - L[iris].x) * 0.55, y: L[iris].y + (L[corner].y - L[iris].y) * 0.55 };
-      const c = sample(pixels, p, Math.max(1.5, dist(L[iris], L[corner]) * 0.12), ([R, G, B]) => R + G + B > 300);
-      if (c !== null) sclera.push(c);
+      const c = sample(pixels, p, Math.max(1.5, dist(L[iris], L[corner]) * 0.12), scleraPixel);
+      if (c !== null) eyeSamples.push(c);
     }
+    if (eyeSamples.length) perEye.push(eyeSamples.length === 2 ? mixColors(eyeSamples[0], eyeSamples[1]) : eyeSamples[0]);
   }
   let wb = [1, 1, 1];
-  if (sclera.length >= 2) {
-    const avgCh = (sh) => sclera.reduce((t, c) => t + ((c >> sh) & 255), 0) / sclera.length;
-    const rgb = [avgCh(16), avgCh(8), avgCh(0)], gray = (rgb[0] + rgb[1] + rgb[2]) / 3;
-    if (gray > 90) wb = rgb.map((v) => clamp(gray / v, 0.8, 1.25));
+  const ch = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  if (perEye.length === 2) {
+    const [e1, e2] = perEye.map(ch);
+    const ratio = (c) => [c[0] / c[1], c[2] / c[1]]; // red/green and blue/green of each eye
+    const [r1, r2] = [ratio(e1), ratio(e2)];
+    const agree = Math.abs(r1[0] - r2[0]) < 0.08 && Math.abs(r1[1] - r2[1]) < 0.08;
+    if (agree) {
+      const m = e1.map((v, i) => (v + e2[i]) / 2);
+      const target = [1.0, 0.97, 0.94]; // natural eye white is a little warm
+      const g = m[1] / target[1];
+      wb = m.map((v, i) => clamp(1 + ((g * target[i]) / v - 1) * 0.5, 0.9, 1.1));
+    }
   }
   const fixWB = (c) => c == null ? c : (Math.min(255, Math.round(((c >> 16) & 255) * wb[0])) << 16) | (Math.min(255, Math.round(((c >> 8) & 255) * wb[1])) << 8) | Math.min(255, Math.round((c & 255) * wb[2]));
 

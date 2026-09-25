@@ -14,8 +14,8 @@ const stage = document.getElementById('stage');
 // Renderer draws the scene into a <canvas>
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping; // softer, film-like light
-renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.NeutralToneMapping; // true-to-life colors (skin keeps its saturation)
+renderer.toneMappingExposure = 1.25;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap; // soft edges via shadow.radius
 stage.appendChild(renderer.domElement);
@@ -36,8 +36,8 @@ controls.maxDistance = 8;
 window.camera = camera; window.controls = controls; // for the test script
 
 // Studio lights: warm key light with soft shadows, cool fill, rim light from behind
-scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a3430, 0.55));
-const key = new THREE.DirectionalLight(0xfff0e0, 2.4);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a4440, 0.6)); // neutral: colors stay true
+const key = new THREE.DirectionalLight(0xfffaf4, 2.3);
 key.position.set(1.6, 3.2, 2.6);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -46,7 +46,7 @@ key.shadow.bias = -0.001;
 key.shadow.normalBias = 0.025; // avoids stripe artifacts ("shadow acne") on the cubes
 key.shadow.radius = 3;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xbcd2ff, 0.7);
+const fill = new THREE.DirectionalLight(0xf2f4ff, 0.75);
 fill.position.set(-2.5, 1.8, 1.5);
 scene.add(fill);
 const rim = new THREE.DirectionalLight(0xffffff, 0.9);

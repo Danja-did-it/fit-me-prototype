@@ -169,6 +169,7 @@ export function bodyFromScans(scans, height) {
     // colors from the photo, white-balanced with the eye whites (face.js)
     const wb = scans.face?.fixWB || ((c) => c);
     if (first.colors) for (const [k, c] of Object.entries(first.colors)) body.colors = { ...body.colors, [k]: wb(c) };
+    // the face scan (later) sets skin/hair/eyes/lips from the face region - more reliable than the body
   }
   if (scans.side.length) {
     const all = scans.side.map((sc) => measureSide(sc, height));

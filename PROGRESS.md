@@ -164,3 +164,10 @@
 - Corrections: white balance from the eye whites (all colors), clothing thickness taken off (shirt 1.2 cm, long pants 0.8 cm),
   +- spread per measure from several photos in the table.
 - Results (6 virtual people, mean abs error): waist 0.5, hip 1.1, thigh 1.0, calf 0.2, upper arm 1.3, leg length 2.8 cm.
+
+## Loop round 1 (v11): true colors
+- User screenshot v10: skin grey-white, hair greenish. Two causes found:
+  1. White balance over-corrected (sclera samples caught lids/skin). Now: only bright, nearly colorless pixels,
+     both eyes must agree (r/g, b/g within 0.08), target = natural warm eye white, applied half-way, capped +-10 %.
+  2. Rendering desaturated light skin (ACES + cool fill light): d9b8a3 rendered S 0.42 -> 0.27. Now NeutralToneMapping,
+     neutral white lights, exposure 1.25: d9b8a3 -> d3b099 (S 0.40), c68e6e -> c08563, 8d5a3b -> 87502a, hue exact.

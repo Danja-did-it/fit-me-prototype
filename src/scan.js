@@ -267,6 +267,7 @@ async function analyzeOutfit(image, lm, mask) {
   const bottoms = calf.clothes > 0.5 ? 'long' : thighLow.clothes > 0.5 ? 'knee' : 'short';
   const shoes = feet.clothes > 0.4;
   const colors = {};
+  // skin: prefer the face color (face.js); from the body only as fallback (glossy highlights skew it)
   const skinCol = torso.avg(SKIN) ?? upperArm.avg(SKIN) ?? forearm.avg(SKIN);
   if (skinCol !== null) colors.skin = skinCol;
   if (top === 'shirt' && torso.avg(CLOTHES) !== null) colors.shirt = torso.avg(CLOTHES);
