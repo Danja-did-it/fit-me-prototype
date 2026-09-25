@@ -223,6 +223,17 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     const detailBone = (n) => /^(head|neck_01|hand|thumb|index|middle|ring|pinky)/.test(n);
     this.vertDetail = Uint8Array.from({ length: H.N }, (_, v) => (detailBone(H.bones[H.skinIdx[v * 4]].name) ? 1 : 0));
     this.vertHand = Uint8Array.from({ length: H.N }, (_, v) => (/^(hand|thumb|index|middle|ring|pinky)/.test(H.bones[H.skinIdx[v * 4]].name) ? 1 : 0));
+    // ear points = the points the "ear scale" targets move clearly (> 25 % of their largest move);
+    // the ears are never painted with hair
+    this.vertEar = new Uint8Array(H.N);
+    for (const name of ['ears/l-ear-scale-incr', 'ears/r-ear-scale-incr']) {
+      const T = H.targets[name];
+      if (!T) continue;
+      const len = (i) => Math.hypot(T.d[i * 3], T.d[i * 3 + 1], T.d[i * 3 + 2]);
+      let max = 0;
+      for (let i = 0; i < T.idx.length; i++) max = Math.max(max, len(i));
+      for (let i = 0; i < T.idx.length; i++) if (len(i) > 0.25 * max) this.vertEar[T.idx[i]] = 1;
+    }
   }
 
   // All target weights for the current person + sliders
@@ -381,6 +392,15 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     }
     const s = this.body.height / 1.75;
     const ctx = { W, L, face, s, waistY: W.hipL[1] + 0.1 * s };
+    // ear box (both sides mirrored): hair runs above and behind the ears, never over them
+    const ear = { top: -Infinity, bottom: Infinity, back: Infinity, front: -Infinity, inner: Infinity };
+    for (let v = 0; v < BODY_VERTS; v++) {
+      if (!this.vertEar[v]) continue;
+      const vy = pos[v * 3 + 1], vz = pos[v * 3 + 2], vx = Math.abs(pos[v * 3]);
+      ear.top = Math.max(ear.top, vy); ear.bottom = Math.min(ear.bottom, vy);
+      ear.back = Math.min(ear.back, vz); ear.front = Math.max(ear.front, vz); ear.inner = Math.min(ear.inner, vx);
+    }
+    face.ear = Number.isFinite(ear.top) ? ear : null;
     // hair line from the hair scan (center + temples, in eye-to-chin units), else a natural default
     const hl = this.body.look.hair, ec = eye.y - chinY;
     ctx.hairLine = (x) => {
@@ -406,7 +426,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
         const isEye = H.faceGroup[cb.tri] > 0;
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
-        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], tissue, occ: cb.occ, size, ctx });
+        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], tissue, occ: cb.occ, size, ctx });
         const jw = worldOf[jn];
         (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nrm.clone(), v: vMain });
         if (res) extra.push({ jn, size, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
@@ -480,7 +500,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
 
   // ---- colors: returns { layers, color } when extra hair/beard volume is wanted ----
   colorCube(out, q) {
-    const { jn, x, y, z, n, isEye, hand, tissue, occ, ctx } = q;
+    const { jn, x, y, z, n, isEye, hand, ear, tissue, occ, ctx } = q;
     const c = this.body.colors, look = this.body.look, o = look.outfit;
     const { face, W, L, s } = ctx;
     const E = face.eye;
@@ -516,9 +536,14 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       const style = look.hair.style;
       const hairTop = y > ctx.hairLine(x) + 0.006 * s || (y > ctx.hairLine(x) - 0.01 * s && z < E.z - 0.01);
       const hairBack = z < E.z - 0.075 * s && y > E.y - 0.05 * s;
-      const hairSide = ax > 0.058 * s && y > E.y + 0.012 * s && z < E.z - 0.025 * s && z > E.z - 0.1 * s;
+      const Ea = face.ear, m = 0.004 * s;
+      const onEar = Ea && ax > Ea.inner - m && y < Ea.top + m && y > Ea.bottom - m && z < Ea.front + m && z > Ea.back - m;
+      // sides: above the ear (arc over it), or behind it down to the nape
+      const hairSide = ax > 0.05 * s && z < E.z - 0.025 * s && z > E.z - 0.1 * s && (Ea
+        ? y > Ea.top + 0.006 * s - 0.004 * s * Math.max(0, (Ea.back - z) / (0.02 * s)) || (z < Ea.back - 0.004 * s && y > E.y - 0.05 * s)
+        : y > E.y + 0.012 * s);
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
-      if (style !== 'none' && jn === 'head' && (hairTop || hairBack || hairSide || bangs)) {
+      if (style !== 'none' && jn === 'head' && !ear && !onEar && (hairTop || hairBack || hairSide || bangs)) {
         color = c.hair; // scalp under the hair volume (see addHair)
       }
       // Eyes as a clean almond-shaped drawing on the face surface (the real eye opening is only

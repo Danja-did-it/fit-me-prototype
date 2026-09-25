@@ -194,3 +194,6 @@
   in half-eye-distance / eye-chin units, both sides averaged; avatar.js paints them there (brow ridge normals allowed
   down to n.z 0.05). Brow color = mean of the darkest 35 % of the pixels along both brows (a single spot mixed brow and
   skin: sample photo brow 94806d vs skin 988473), always <= 80 % of the skin brightness -> brows readable.
+- Loop round 7 (v16): ears were painted with hair color (the back-of-head hair rule reached over them) -> speckled
+  brown ears. Ear points now come from the MakeHuman ear-scale targets (points moved > 25 % of the max); ears and a box
+  around them are never hair. Short hair side edge arcs above the ear and runs down behind it to the nape.
