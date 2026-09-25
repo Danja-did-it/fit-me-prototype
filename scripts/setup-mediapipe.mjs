@@ -9,6 +9,8 @@ const OUT = 'public/mediapipe';
 const G = 'https://storage.googleapis.com/mediapipe-models';
 const MODELS = {
   'pose_landmarker_full.task': `${G}/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task`, // body
+  'pose_landmarker_heavy.task': `${G}/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task`, // body, most accurate
+  'selfie_multiclass_256x256.tflite': `${G}/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite`, // hair/skin/clothes
   'face_landmarker.task': `${G}/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`,                  // 478 face points
   'hair_segmenter.tflite': `${G}/image_segmenter/hair_segmenter/float32/latest/hair_segmenter.tflite`,                // hair mask
 };

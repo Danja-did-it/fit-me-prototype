@@ -97,6 +97,7 @@ const setStatus = (t) => (statusEl.textContent = t);
 
 // Latest scan results, used to shape the avatar
 export const scans = { front: null, side: null };
+const tipsByView = { front: [], side: [] };
 window.scans = scans;
 
 async function runScan(view, image) {
@@ -119,6 +120,10 @@ async function runScan(view, image) {
       manual = {}; // a new scan replaces manual changes
       faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
     }
+    // tips when the photo is not ideal (arms at the body, not upright, clothes ...)
+    const { scanQuality } = await scanModule();
+    tipsByView[view] = scanQuality(scan, view);
+    $('tips').innerHTML = [...tipsByView.front, ...tipsByView.side].map((t) => `<li>${t}</li>`).join('');
     setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓' + faceText + ' – Avatar angepasst');
     applyScans();
   } catch (e) {
@@ -224,7 +229,7 @@ function applyScans() {
   const h = Math.min(220, Math.max(120, Number(heightInput.value) || 175)) / 100;
   const body = bodyFromScans(scans, h);
   // manual choices in "Individuell" win over the scan
-  body.look = { ...body.look, ...manual.look, hair: { ...body.look.hair, ...manual.look?.hair } };
+  body.look = { ...body.look, ...manual.look, hair: { ...body.look.hair, ...manual.look?.hair }, outfit: { ...body.look.outfit, ...manual.look?.outfit } };
   body.colors = { ...body.colors, ...manual.colors };
   avatar.body = body;
   rebuild();
@@ -325,6 +330,10 @@ function showLook(body) {
   $('bangs').checked = !!L.hair.bangs;
   $('beard').value = L.beard;
   $('mustache').checked = !!L.mustache;
+  const o = L.outfit;
+  $('top').value = o.top === 'none' ? 'none' : o.sleeves === 'long' ? 'long' : o.sleeves === 'none' ? 'tank' : 'short';
+  $('bottoms').value = o.bottoms;
+  $('shoes').checked = !!o.shoes;
   for (const [id, key] of Object.entries(COLOR_INPUTS)) $(id).value = hexColor(body.colors[key]);
   const f = scans.front?.face;
   if (f) {
@@ -341,6 +350,12 @@ function updateLook() {
     hair: { style: $('hairStyle').value, bangs: $('bangs').checked },
     beard: $('beard').value,
     mustache: $('mustache').checked,
+    outfit: {
+      top: $('top').value === 'none' ? 'none' : 'shirt',
+      sleeves: { none: 'none', short: 'short', long: 'long', tank: 'none' }[$('top').value],
+      bottoms: $('bottoms').value,
+      shoes: $('shoes').checked,
+    },
   };
   manual.colors = {};
   for (const [id, key] of Object.entries(COLOR_INPUTS)) manual.colors[key] = parseInt($(id).value.slice(1), 16);
@@ -348,5 +363,5 @@ function updateLook() {
   if (manual.colors.hair !== avatar.body.colors.hair) manual.colors.beard = manual.colors.brow = manual.colors.hair;
   applyScans();
 }
-for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
 applyScans(); // first build (defaults until a photo is scanned)

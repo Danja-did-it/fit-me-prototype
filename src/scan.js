@@ -5,7 +5,7 @@
 //   landmarks: 33 body points, x/y normalized 0..1 in the image (see MediaPipe docs)
 //   mask:      person segmentation, one float (0..1) per pixel: 1 = person
 //   width/height of the analyzed image
-import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import { FilesetResolver, PoseLandmarker, ImageSegmenter } from '@mediapipe/tasks-vision';
 
 // Files served from public/mediapipe (copied there by scripts/setup-mediapipe.mjs)
 const BASE = import.meta.env.BASE_URL + 'mediapipe';
@@ -17,18 +17,18 @@ export function loadPose() {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(`${BASE}/wasm`);
-      const options = (delegate) => ({
-        baseOptions: { modelAssetPath: `${BASE}/pose_landmarker_full.task`, delegate },
+      // "heavy" = most accurate pose model (30 MB); "full" as fallback
+      const options = (delegate, model = 'heavy') => ({
+        baseOptions: { modelAssetPath: `${BASE}/pose_landmarker_${model}.task`, delegate },
         runningMode: 'IMAGE',
         numPoses: 1,
         outputSegmentationMasks: true,
       });
-      try {
-        return await PoseLandmarker.createFromOptions(vision, options('GPU'));
-      } catch (e) {
-        console.info('GPU delegate unavailable, using CPU', e);
-        return await PoseLandmarker.createFromOptions(vision, options('CPU'));
+      for (const [delegate, model] of [['GPU', 'heavy'], ['CPU', 'heavy'], ['CPU', 'full']]) {
+        try { return await PoseLandmarker.createFromOptions(vision, options(delegate, model)); }
+        catch (e) { console.info(`pose model ${model}/${delegate} unavailable`, e); }
       }
+      throw new Error('Pose model could not be loaded');
     })();
     landmarkerPromise.catch(() => (landmarkerPromise = null)); // allow retry
   }
@@ -45,10 +45,15 @@ export async function analyze(image) {
     // copy the mask: MediaPipe frees its memory when the result is closed
     const mask = { data: m.getAsFloat32Array().slice(), width: m.width, height: m.height };
     const landmarks = result.landmarks[0];
+    let outfit = null;
+    try { outfit = await analyzeOutfit(image, landmarks, mask); } catch (e) { console.warn('outfit analysis failed', e); }
+    const colors = sampleColors(image, landmarks, mask);
+    if (outfit) Object.assign(colors, outfit.colors);
     return {
       landmarks,
       mask,
-      colors: sampleColors(image, landmarks, mask),
+      outfit,
+      colors,
       width: image.naturalWidth || image.width,
       height: image.naturalHeight || image.height,
     };
@@ -173,4 +178,122 @@ export function loadImageFile(file) {
     img.onerror = reject;
     img.src = URL.createObjectURL(file);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Clothes vs skin with MediaPipe's multi-class segmenter
+// (0 background, 1 hair, 2 body skin, 3 face skin, 4 clothes, 5 accessories)
+// ---------------------------------------------------------------------------
+let segPromise = null;
+function loadSegmenter() {
+  if (!segPromise) {
+    segPromise = (async () => {
+      const vision = await FilesetResolver.forVisionTasks(`${BASE}/wasm`);
+      const opts = (delegate) => ({
+        baseOptions: { modelAssetPath: `${BASE}/selfie_multiclass_256x256.tflite`, delegate },
+        runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false,
+      });
+      try { return await ImageSegmenter.createFromOptions(vision, opts('GPU')); }
+      catch { return ImageSegmenter.createFromOptions(vision, opts('CPU')); }
+    })();
+    segPromise.catch(() => (segPromise = null));
+  }
+  return segPromise;
+}
+
+const SKIN = 2, CLOTHES = 4, OTHER = 5;
+
+// Look at the person region (square crop, 512 px) and decide what is worn where
+async function analyzeOutfit(image, lm, mask) {
+  const seg = await loadSegmenter();
+  const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+  // bounding box of the person mask -> square crop
+  let x0 = mask.width, x1 = 0, y0 = mask.height, y1 = 0;
+  for (let y = 0; y < mask.height; y++) for (let x = 0; x < mask.width; x++) {
+    if (mask.data[y * mask.width + x] > 0.5) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  }
+  const sx = w / mask.width, sy = h / mask.height;
+  const size = Math.max((x1 - x0) * sx, (y1 - y0) * sy) * 1.05;
+  const cx = ((x0 + x1) / 2) * sx, cy = ((y0 + y1) / 2) * sy;
+  const N = 512;
+  const crop = document.createElement('canvas');
+  crop.width = crop.height = N;
+  const ctx = crop.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, cx - size / 2, cy - size / 2, size, size, 0, 0, N, N);
+  const px = ctx.getImageData(0, 0, N, N).data;
+  const res = seg.segment(crop);
+  const cm = res.categoryMask, cat = cm.getAsUint8Array().slice(), mw = cm.width, mh = cm.height;
+  res.close?.();
+
+  // landmark -> crop pixel
+  const P = (i) => ({ x: ((lm[i].x * w - (cx - size / 2)) / size) * N, y: ((lm[i].y * h - (cy - size / 2)) / size) * N });
+  const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const r = N * 0.012;
+  // share of each class + average color of one class around points
+  function region(points) {
+    const count = [0, 0, 0, 0, 0, 0];
+    const col = { [SKIN]: [0, 0, 0, 0], [CLOTHES]: [0, 0, 0, 0], [OTHER]: [0, 0, 0, 0] };
+    for (const p of points) for (let dy = -r; dy <= r; dy += 2) for (let dx = -r; dx <= r; dx += 2) {
+      const X = Math.round(p.x + dx), Y = Math.round(p.y + dy);
+      if (X < 0 || Y < 0 || X >= N || Y >= N) continue;
+      const c = cat[Math.floor((Y / N) * mh) * mw + Math.floor((X / N) * mw)];
+      count[c]++;
+      if (col[c]) { const i = (Y * N + X) * 4; col[c][0] += px[i]; col[c][1] += px[i + 1]; col[c][2] += px[i + 2]; col[c][3]++; }
+    }
+    const total = count.reduce((a, b) => a + b, 0) || 1;
+    const avg = (k) => col[k][3] ? (Math.round(col[k][0] / col[k][3]) << 16) | (Math.round(col[k][1] / col[k][3]) << 8) | Math.round(col[k][2] / col[k][3]) : null;
+    return { skin: count[SKIN] / total, clothes: (count[CLOTHES] + count[OTHER]) / total, avg };
+  }
+  const side = (a, b, ts) => ts.map((t) => lerp(P(a), P(b), t));
+  // torso: points between shoulders and hips
+  const torsoPts = [];
+  for (const t of [0.25, 0.5, 0.75]) for (const u of [0.3, 0.5, 0.7]) {
+    torsoPts.push(lerp(lerp(P(11), P(23), t), lerp(P(12), P(24), t), u));
+  }
+  const torso = region(torsoPts);
+  const upperArm = region([...side(11, 13, [0.3, 0.6]), ...side(12, 14, [0.3, 0.6])]);
+  const forearm = region([...side(13, 15, [0.4, 0.7]), ...side(14, 16, [0.4, 0.7])]);
+  const thighTop = region([...side(23, 25, [0.15, 0.35]), ...side(24, 26, [0.15, 0.35])]);
+  const thighLow = region([...side(23, 25, [0.75, 0.9]), ...side(24, 26, [0.75, 0.9])]);
+  const calf = region([...side(25, 27, [0.4, 0.7]), ...side(26, 28, [0.4, 0.7])]);
+  const feet = region([...side(27, 31, [0.3, 0.7]), ...side(28, 32, [0.3, 0.7])]);
+
+  const top = torso.clothes > 0.5 ? 'shirt' : 'none';
+  const sleeves = top === 'none' ? 'none' : forearm.clothes > 0.5 ? 'long' : upperArm.clothes > 0.5 ? 'short' : 'none';
+  const bottoms = calf.clothes > 0.5 ? 'long' : thighLow.clothes > 0.5 ? 'knee' : 'short';
+  const shoes = feet.clothes > 0.4;
+  const colors = {};
+  const skinCol = torso.avg(SKIN) ?? upperArm.avg(SKIN) ?? forearm.avg(SKIN);
+  if (skinCol !== null) colors.skin = skinCol;
+  if (top === 'shirt' && torso.avg(CLOTHES) !== null) colors.shirt = torso.avg(CLOTHES);
+  const pants = thighTop.avg(CLOTHES) ?? thighTop.avg(OTHER);
+  if (pants !== null) colors.shorts = pants;
+  const shoeCol = feet.avg(CLOTHES) ?? feet.avg(OTHER);
+  if (shoes && shoeCol !== null) colors.shoe = shoeCol;
+  return { top, sleeves, bottoms, shoes, colors };
+}
+
+// ---------------------------------------------------------------------------
+// Scan quality: concrete tips when the photo will give poor measurements
+// ---------------------------------------------------------------------------
+export function scanQuality(scan, view) {
+  const lm = scan.landmarks, tips = [];
+  const vis = (i) => (lm[i].visibility ?? 1) > 0.5;
+  if (!vis(0) || !vis(27) || !vis(28)) tips.push('Ganzer Körper von Kopf bis Fuß ins Bild (etwas Rand lassen).');
+  const top = Math.min(...lm.map((p) => p.y)), bottom = Math.max(...lm.map((p) => p.y));
+  if (bottom - top < 0.5) tips.push('Näher an die Kamera – der Körper sollte mehr als die halbe Bildhöhe füllen.');
+  if (top < 0.03 || bottom > 0.99) tips.push('Etwas weiter weg: Kopf oder Füße sind am Bildrand abgeschnitten.');
+  const shoulderDx = Math.abs(lm[11].x - lm[12].x), bodyH = Math.abs(lm[27].y - lm[11].y) || 1;
+  if (view === 'front') {
+    if (shoulderDx / bodyH < 0.18) tips.push('Frontal zur Kamera stellen (Schultern zeigen nach vorn).');
+    const tilt = Math.abs(lm[11].y - lm[12].y) / (shoulderDx || 1);
+    if (tilt > 0.12) tips.push('Gerade stehen – die Schultern sind schief.');
+    const armGap = Math.min(Math.abs(lm[15].x - lm[23].x), Math.abs(lm[16].x - lm[24].x)) / bodyH;
+    if (armGap < 0.05) tips.push('Arme etwas vom Körper weg (ca. 20–30°), sie dürfen die Hüfte nicht berühren.');
+    if (scan.outfit?.top === 'shirt') tips.push('Für genauere Maße: oben ohne oder enges Sporttop.');
+    if (scan.outfit?.bottoms === 'long') tips.push('Enge kurze Hose / Leggings statt langer Hose gibt genauere Beine.');
+  } else if (shoulderDx / bodyH > 0.12) {
+    tips.push('Für das Seitenfoto 90° drehen – eine Schulter zeigt zur Kamera.');
+  }
+  return tips;
 }

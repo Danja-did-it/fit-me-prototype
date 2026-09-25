@@ -41,6 +41,7 @@ export const DEFAULT_LOOK = {
   hair: { style: 'short', top: 1, width: 1, bangs: false }, // style: none | short | medium | long
   beard: 'none',                                            // none | stubble | goatee | full
   mustache: false,
+  outfit: { top: 'shirt', sleeves: 'short', bottoms: 'short', shoes: true },
 };
 const DETAIL = {
   sole: new THREE.Color(0x2e2e2e),
@@ -118,7 +119,7 @@ function skeleton(b, comp) {
   const k = {
     s, u, L,
     face: { ...DEFAULT_FACE, ...b.face },
-    look: { ...DEFAULT_LOOK, ...b.look, hair: { ...DEFAULT_LOOK.hair, ...b.look?.hair } },
+    look: { ...DEFAULT_LOOK, ...b.look, hair: { ...DEFAULT_LOOK.hair, ...b.look?.hair }, outfit: { ...DEFAULT_LOOK.outfit, ...b.look?.outfit } },
     shoulderR: b.shoulderWidth / 2,
     waistR: b.waistWidth / 2,
     hipR: b.hipWidth / 2,
@@ -535,7 +536,7 @@ export class Avatar {
 
     // ---- normal view: skin, clothes, hair, face ----
     const S = (v) => v * s;
-    let color = c.skin, special = null;
+    let color = c.skin, special = null, hem = false;
     if (bone === 'head') {
       // material comes from the nearest shape (tag), plus a few painted details
       const look = k.look, E = k.eye;
@@ -566,20 +567,41 @@ export class Avatar {
         const tip = Math.hypot(p.x - P.b[0], p.y - P.b[1], p.z - P.b[2]);
         if (tip < S(0.009) && p.x - P.b[0] > S(0.003)) special = DETAIL.nail;
       }
-    } else if (bone === 'chest') color = c.shirt;
-    else if (bone === 'spine') color = p.y > S(0.08) ? c.shirt : c.shorts;
-    else if (bone === 'hips') color = c.shorts;
-    else if (bone === 'shoulder') color = p.y > -L.upperArm * 0.45 ? c.shirt : c.skin;
-    else if (bone === 'hip') color = p.y > -L.thigh * 0.5 ? c.shorts : c.skin;
-    else if (bone === 'knee') { if (p.y < -L.calf + S(0.05)) special = DETAIL.sock; }
-    else if (bone === 'ankle') { color = c.shoe; if (p.y < -L.foot + S(0.018)) special = DETAIL.sole; }
+    } else {
+      // clothes as scanned (or chosen): top none/shirt, sleeves none/short/long,
+      // bottoms short/knee/long, shoes yes/no
+      const o = k.look.outfit, u = k.u;
+      const shirt = o.top !== 'none';
+      const sleeveEnd = o.sleeves === 'long' ? -L.upperArm - 1 : o.sleeves === 'short' ? -L.upperArm * 0.45 : 1;
+      const pantsEnd = o.bottoms === 'short' ? -L.thigh * 0.5 : -L.thigh - 1;
+      if (bone === 'chest') color = shirt ? c.shirt : c.skin;
+      else if (bone === 'spine') color = p.y > S(0.08) ? (shirt ? c.shirt : c.skin) : c.shorts;
+      else if (bone === 'hips') color = c.shorts;
+      else if (bone === 'shoulder') color = shirt && p.y > sleeveEnd ? c.shirt : c.skin;
+      else if (bone === 'elbow') { if (shirt && o.sleeves === 'long' && tag !== 'hand' && tag !== 'finger' && p.y > -L.forearmOnly + S(0.01)) color = c.shirt; }
+      else if (bone === 'hip') color = p.y > pantsEnd ? c.shorts : c.skin;
+      else if (bone === 'knee') {
+        if (o.bottoms === 'long' && p.y > -L.calf + S(0.03)) color = c.shorts;
+        else if (o.shoes && p.y < -L.calf + S(0.05)) special = DETAIL.sock;
+      } else if (bone === 'ankle') {
+        if (o.shoes) { color = c.shoe; if (p.y < -L.foot + S(0.018)) special = DETAIL.sole; }
+        else if (o.bottoms === 'long' && p.y > -S(0.01)) color = c.shorts;
+      }
+      // bare upper body: nipples and navel so it does not look like a mannequin
+      if (!shirt && bone === 'chest' && p.z > 0) {
+        const d = Math.hypot(Math.abs(p.x) - S(0.092), p.y - S(0.105) * u);
+        if (d < S(0.011)) special = new THREE.Color(c.skin).multiplyScalar(d < S(0.005) ? 0.62 : 0.78);
+      }
+      if (!shirt && bone === 'spine' && p.z > 0 && Math.hypot(p.x, p.y - S(0.12) * u) < S(0.006)) {
+        special = new THREE.Color(c.skin).multiplyScalar(0.6);
+      }
+      hem = (bone === 'shoulder' && shirt && o.sleeves === 'short' && Math.abs(p.y - sleeveEnd) < S(0.012)) ||
+        (bone === 'hip' && o.bottoms === 'short' && Math.abs(p.y - pantsEnd) < S(0.012)) ||
+        (bone === 'spine' && p.y > S(0.06) && p.y < S(0.08));
+    }
 
     if (special) out.copy(special);
     else out.set(color);
-    // hems and waistband a bit darker
-    const hem = (bone === 'shoulder' && Math.abs(p.y + L.upperArm * 0.45) < S(0.012)) ||
-      (bone === 'hip' && Math.abs(p.y + L.thigh * 0.5) < S(0.012)) ||
-      (bone === 'spine' && p.y > S(0.06) && p.y < S(0.08));
     if (hem) out.multiplyScalar(0.8);
 
     // tint shows where fat (orange) / muscle (red) was added or removed (blue)

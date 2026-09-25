@@ -144,10 +144,15 @@ export function bodyFromScans(scans, height) {
   body.hipWidth = Math.min(body.hipWidth, body.shoulderWidth * 1.1);
   body.thighWidth = Math.min(body.thighWidth, body.hipWidth * 0.55);
   const f = scans.front?.face;
+  body.look = { ...body.look };
   if (f) {
     body.face = f.measures;
-    body.look = { hair: f.hair, beard: f.beard, mustache: f.mustache };
+    Object.assign(body.look, { hair: f.hair, beard: f.beard, mustache: f.mustache });
     body.colors = { ...body.colors, ...f.colors };
+  }
+  if (scans.front?.outfit) {
+    const o = scans.front.outfit;
+    body.look.outfit = { top: o.top, sleeves: o.sleeves, bottoms: o.bottoms, shoes: o.shoes };
   }
   return body;
 }

@@ -48,6 +48,18 @@ Weitere Befehle:
    Dafür muss das Gesicht auf dem Front-Foto gut sichtbar sein (Licht von vorn, keine Sonnenbrille/Kappe).
 5. **Bewegung** – Stehen, Gehen (auf der Stelle), Kniebeuge. Figur mit Maus/Finger drehen, zoomen mit Mausrad/zwei Fingern.
 
+## So scannst du richtig
+
+- **Kleidung:** oben ohne oder enges Sporttop, enge kurze Hose / Leggings, barfuß oder flache Schuhe.
+  Haare aus dem Gesicht, keine Kappe, keine Brille. (Gemessen wird der Umriss – weite Kleidung macht dich breiter.)
+- **Front:** gerade stehen, Füße hüftbreit, Arme 20–30° vom Körper weg (dürfen die Hüfte nicht berühren),
+  Blick in die Kamera, Mund entspannt geschlossen.
+- **Seite:** 90° drehen, eine Schulter zeigt zur Kamera, Arme locker hängen lassen.
+- **Kamera:** am besten fotografiert jemand anderes mit der Rückkamera. Handy auf Hüfthöhe, senkrecht,
+  2,5–3 m Abstand, ganzer Körper mit etwas Rand. Allein: Handy abstellen + 5-Sekunden-Selbstauslöser.
+- **Licht:** gleichmäßig von vorn, kein Gegenlicht; ruhiger, einfarbiger Hintergrund.
+- **Größe** genau eintragen. Nach jedem Foto zeigt die App Tipps, falls etwas nicht passt.
+
 ## Auf dem Handy
 
 Die Kamera funktioniert im Browser nur über **HTTPS** (oder `localhost`). Wege aufs Handy:

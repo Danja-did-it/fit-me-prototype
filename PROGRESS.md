@@ -116,3 +116,14 @@
   smaller nostrils; new shape below the mouth removes the deep groove (chin no longer a separate plate);
   softer jaw/chin blend; nose base fills the gap under the tip (profile no longer a beak); crease shading 60 %
   weaker on face, neck and hands; neck now built with the fine detail cubes.
+
+## Iteration 8: best tools + scan guide (user: how to scan? shirtless? use the most detailed tools)
+- Pose Landmarker "heavy" (30 MB, most accurate) with fallback to "full".
+- Selfie multi-class segmenter (hair / body skin / face skin / clothes / accessories) on a 512 px person crop:
+  detects top (none / shirt), sleeves (none / short / long), bottoms (short / knee / long), shoes; takes
+  skin color from body skin and real clothing colors. Avatar wears what was scanned (shirtless incl.
+  nipples + navel, long sleeves on the forearm, long pants down to the ankle, barefoot feet).
+- Scan quality tips after each photo: whole body visible, distance, frontal / 90 deg side, upright,
+  arms away from the hips, clothing advice.
+- Scan guide in the app (collapsible) and in the README. Models on first scan now ~60 MB (cached afterwards).
+- Known: sleeve detection can be wrong when a hand rests on something (sample photo: suit read as short sleeves).
