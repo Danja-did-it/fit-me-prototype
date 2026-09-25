@@ -73,3 +73,11 @@ pulled by width profiles. See PROGRESS.md loop round 8.
 | v18 | 1.1 | 0.6 | 0.5 | 1.2 | 0.4 | 1.7 | 0.9 | 0.5 | **0.2** | 1.3 | 0.6 |
 
 The landmark arm (shoulder -> elbow -> wrist) is 2.2 % shorter than the joint chain; corrected in measure.js.
+
+## v19: limb widths (sideways landmark offset)
+
+| | shoulder | waist | hip | thigh | calf | upper arm | neck | leg | arm | chest d. | belly d. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| v19 | 0.9 | 0.4 | 0.8 | 0.8 | 0.4 | **0.5** | 0.9 | 0.5 | 0.2 | 1.3 | 0.6 |
+
+MediaPipe's shoulder / elbow points sit ~1.5-2 cm inside the joints; the limb center line is corrected sideways.

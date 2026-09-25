@@ -55,6 +55,7 @@ const result = await page.evaluate(async (people) => {
     const truth = measureModel(av, truthShape);
     // photos in the pose of the scan guide: arms ~25 deg away from the body
     av.poseSpread = 0.44; av.build();
+    const photoW = av.shape().W; // joints in the photo pose (for the landmark calibration)
     const front = photo(0), side = photo(-Math.PI / 2);
     av.poseSpread = undefined;
     // 2. scan these photos with the normal pipeline
@@ -65,7 +66,7 @@ const result = await page.evaluate(async (people) => {
       const sc = window.scans.front[0], m = sc.mask;
       let top = -1, bottom = -1;
       for (let y = 0; y < m.height; y++) { let c = 0; for (let x = 0; x < m.width; x++) if (m.data[y * m.width + x] > 0.5) c++; if (c > 2) { if (top < 0) top = y; bottom = y; } }
-      const k = height / (bottom - top), W = truthW;
+      const k = height / (bottom - top), W = photoW;
       const lmY = (i) => (bottom - sc.landmarks[i].y * m.height) * k;
       const lmX = (i) => (sc.landmarks[i].x * m.width - m.width / 2) * k;
       const J = { 11: 'shoulderL', 23: 'hipL', 25: 'kneeL', 27: 'ankleL', 13: 'elbowL', 15: 'handL' };
@@ -75,6 +76,9 @@ const result = await page.evaluate(async (people) => {
         const dy = ((lmY(+i) - W[j][1]) + (lmY(i2) - W[j2][1])) / 2 / height;
         (cal[j] ||= []).push(+dy.toFixed(4));
         (cal[j + (gender ? '_m' : '_f')] ||= []).push(+dy.toFixed(4));
+        // sideways: + = MediaPipe point further OUT from the body center than the joint
+        const dx = ((lmX(+i) - W[j][0]) - (lmX(i2) - W[j2][0])) / 2 / height;
+        (cal[j + '_x'] ||= []).push(+dx.toFixed(4));
       }
     }
     const fitted = measureModel(av, av.shape());

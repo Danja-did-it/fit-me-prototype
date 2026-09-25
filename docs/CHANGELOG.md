@@ -24,5 +24,6 @@ Screenshots: `docs/screenshots/`.
 | v16 | 25.09.2026 | Ohren in Hautfarbe (vorher teils Haarfarbe), natürliche Haarkante über und hinter dem Ohr | – |
 | v17 | 26.09.2026 | Beinlänge: Fehler 2,8 → 0,4 cm (Hüftpunkt je Geschlecht kalibriert, Längen nicht mehr von Breiten-Profilen verzogen); Schulter, Hüfte, Hals ebenfalls genauer | – |
 | v18 | 26.09.2026 | Armlänge: Fehler 1,4 → 0,2 cm (MediaPipe-Armpunkte liegen 2,2 % innerhalb der Gelenkkette – korrigiert) | – |
+| v19 | 26.09.2026 | Oberarmbreite: Fehler 1,6 → 0,5 cm, Oberschenkel 0,8 cm; Gewicht wird nicht mehr zu hoch geschätzt (seitliche Kalibrierung der Gelenkpunkte) | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

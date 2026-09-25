@@ -208,3 +208,9 @@
   MediaPipe's shoulder/wrist points sit inside the joint chain (landmark arm 2.2 % shorter, men and women alike) ->
   photo arm length / 0.978. Model arm length now also measured in the picture plane (x, y) like the photo landmarks.
   Result: arm 1.4 -> 0.2 cm, others unchanged (leg 0.5, hip 0.5, shoulder 1.1). Open: upper arm width 1.7, chest depth 1.3.
+- Loop round 10 (v19): upper arm width 1.6-1.7 cm (photo 2.3-3.8 cm too wide, fit then made everyone too heavy:
+  weight 0.9 vs true 0.4-0.6). validate.mjs now calibrates the landmarks against the joints in the PHOTO pose, also
+  sideways: MediaPipe's limb points sit inside the joints (shoulder -0.84 %, elbow -1.19 % of height) -> photo limb
+  center line too far in -> "2 x center line to outer edge" too wide. Applied in full it over-corrected (arms 1.8 cm too
+  thin); half for the arm, full at the hip, none below the knee validates best. Result: upper arm 1.6 -> 0.5, thigh
+  1.0 -> 0.8, shoulder 1.1 -> 0.9 cm, weight now close to the truth (5 of 6). Open: chest depth 1.3 cm.

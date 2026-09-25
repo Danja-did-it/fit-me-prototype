@@ -51,6 +51,13 @@ export const LANDMARK_OFFSET = { shoulder: -0.003, elbow: -0.009, hand: -0.001, 
 // hip joint but ~1.2 % ABOVE the female one (pelvis shape; 8 virtual people). One shared value
 // made male legs ~3-4 cm too short. [female, male], blended with the gender slider.
 const LEG_OFFSET = { hip: [0.0118, -0.007], knee: [0.0155, 0.0125], ankle: [0.0447, 0.051] };
+// Sideways: MediaPipe's limb points sit INSIDE the joints (toward the body center), share of
+// height. Without this the limb center line on the photo is too far in and the upper arm
+// (2 x center line -> outer edge) came out ~2 cm too wide. Measured in the photo pose: shoulder
+// -0.0084, elbow -0.0119, hip -0.0056, knee -0.0056, ankle -0.0034; applied in full they
+// over-corrected (arms 1.8 cm too thin, calves 1.6), so the values below are the ones that
+// validate best (half for the arm, none below the knee where the calf was already right).
+const X_OFFSET = { shoulder: -0.0042, elbow: -0.006, hand: -0.003, hip: -0.0056 };
 export const landmarkOffset = (key, gender = 0.5) =>
   LEG_OFFSET[key] ? LEG_OFFSET[key][0] + (LEG_OFFSET[key][1] - LEG_OFFSET[key][0]) * gender : LANDMARK_OFFSET[key];
 
@@ -60,8 +67,8 @@ export function measureModel(av, shape) {
   const Hh = av.body.height;
   for (const [j, w] of Object.entries(shape.W)) {
     const key = j.replace(/[LR]$/, '');
-    const off = landmarkOffset(key, av.person?.gender);
-    W[j] = off !== undefined ? [w[0], w[1] + off * Hh, w[2]] : w;
+    const off = landmarkOffset(key, av.person?.gender), ox = (X_OFFSET[key] ?? 0) * Hh * Math.sign(w[0]);
+    W[j] = off !== undefined ? [w[0] + ox, w[1] + off * Hh, w[2]] : w;
   }
   const J = av.vertJoint, N = 13380, H = av.body.height;
   const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, yh = (W.hipL[1] + W.hipR[1]) / 2;
