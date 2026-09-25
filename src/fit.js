@@ -47,6 +47,12 @@ const WEIGHT = { neckWidth: 0.3, forearmWidth: 0.5, legLength: 6, armLength: 3, 
 // height, measured with scripts/validate.mjs on rendered virtual people). The model is
 // measured at these "virtual MediaPipe points" so photo and model compare the same spots.
 export const LANDMARK_OFFSET = { shoulder: -0.003, elbow: -0.009, hand: -0.001, hip: 0.005, knee: 0.0175, ankle: 0.049 };
+// The leg points depend on the sex: MediaPipe's hip point sits ~0.7 % of the height BELOW the male
+// hip joint but ~1.2 % ABOVE the female one (pelvis shape; 8 virtual people). One shared value
+// made male legs ~3-4 cm too short. [female, male], blended with the gender slider.
+const LEG_OFFSET = { hip: [0.0118, -0.007], knee: [0.0155, 0.0125], ankle: [0.0447, 0.051] };
+export const landmarkOffset = (key, gender = 0.5) =>
+  LEG_OFFSET[key] ? LEG_OFFSET[key][0] + (LEG_OFFSET[key][1] - LEG_OFFSET[key][0]) * gender : LANDMARK_OFFSET[key];
 
 export function measureModel(av, shape) {
   const { pos } = shape;
@@ -54,7 +60,8 @@ export function measureModel(av, shape) {
   const Hh = av.body.height;
   for (const [j, w] of Object.entries(shape.W)) {
     const key = j.replace(/[LR]$/, '');
-    W[j] = LANDMARK_OFFSET[key] !== undefined ? [w[0], w[1] + LANDMARK_OFFSET[key] * Hh, w[2]] : w;
+    const off = landmarkOffset(key, av.person?.gender);
+    W[j] = off !== undefined ? [w[0], w[1] + off * Hh, w[2]] : w;
   }
   const J = av.vertJoint, N = 13380, H = av.body.height;
   const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, yh = (W.hipL[1] + W.hipR[1]) / 2;
@@ -148,11 +155,11 @@ export function fitToScan(av, target, keys) {
     av.fit = { weight: p.weight, muscle: p.muscle, local: {} };
     for (const P of PARAMS) if (!P.macro) for (const t of P.targets) av.fit.local[t] = p[P.key];
   };
-  const cost = () => {
+  const cost = (use = keys) => {
     apply();
     const m = measureModel(av, av.shape());
     let c = 0;
-    for (const k of keys) {
+    for (const k of use) {
       if (k.startsWith('p')) { // profile: average relative error over its points
         const T = target.profile?.[k], M = m[k];
         if (!T) continue;
@@ -163,10 +170,14 @@ export function fitToScan(av, target, keys) {
     }
     return c;
   };
-  let best = cost(), evals = 1;
+  let evals = 1;
   // coordinate descent in phases: lengths first (they move all measuring heights),
-  // then widths / depths, then everything together with small steps
+  // then widths / depths, then everything together with small steps.
+  // Length phases only look at the measured lengths: otherwise the fit shortens the legs to
+  // move the width profiles to where the model happens to be wider (validate.mjs: legs 3-4 cm too
+  // short while the photo leg length was right within 1 cm).
   const LENGTHS = ['legs', 'arms'];
+  const lengthKeys = keys.filter((k) => k === 'legLength' || k === 'armLength');
   const lengths = active.filter((P) => LENGTHS.includes(P.key)), shapes = active.filter((P) => !LENGTHS.includes(P.key));
   const phases = [
     { params: lengths, steps: [0.4, 0.2, 0.1, 0.05] },           // 1. lengths
@@ -176,6 +187,8 @@ export function fitToScan(av, target, keys) {
     { params: lengths, steps: [0.0125, 0.00625] },               // 5. fine lengths
   ];
   for (const ph of phases) {
+    const use = ph.params === lengths && lengthKeys.length ? lengthKeys : keys;
+    let best = cost(use);
     for (const step of ph.steps) {
       for (let round = 0; round < 2; round++) {
         for (const P of ph.params) {
@@ -185,7 +198,7 @@ export function fitToScan(av, target, keys) {
             const nv = Math.min(hi, Math.max(lo, old + dir * step));
             if (nv === old) continue;
             p[P.key] = nv;
-            const c = cost(); evals++;
+            const c = cost(use); evals++;
             if (c < best) { best = c; break; }
             p[P.key] = old;
           }
@@ -193,7 +206,7 @@ export function fitToScan(av, target, keys) {
       }
     }
   }
-  apply();
+  const best = cost();
   const model = measureModel(av, av.shape());
   av.composition = comp;
   [av.poseSpread, av.poseLegSpread] = pose;

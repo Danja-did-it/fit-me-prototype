@@ -74,6 +74,7 @@ const result = await page.evaluate(async (people) => {
         const i2 = +i + 1, j2 = j.replace('L', 'R');
         const dy = ((lmY(+i) - W[j][1]) + (lmY(i2) - W[j2][1])) / 2 / height;
         (cal[j] ||= []).push(+dy.toFixed(4));
+        (cal[j + (gender ? '_m' : '_f')] ||= []).push(+dy.toFixed(4));
       }
     }
     const fitted = measureModel(av, av.shape());
@@ -112,6 +113,8 @@ console.log('error (fitted - true) in cm per person:');
 console.table(result.rows);
 console.log('mean absolute error (cm):', result.mae);
 console.log('leg debug', JSON.stringify(result.legDebug.photo), JSON.stringify(result.legDebug.truthModel));
+console.log('error terms x1000 with fitted legs:', JSON.stringify(result.legDebug.eFit));
+console.log('error terms x1000 with legs = 0:  ', JSON.stringify(result.legDebug.eZero));
 console.log('landmark height offset (MediaPipe - joint, share of body height):', result.calib);
 if (errors.length) console.log('page errors:', errors);
 await browser.close();

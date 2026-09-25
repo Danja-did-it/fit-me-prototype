@@ -53,3 +53,15 @@ Virtual faces with known face targets (random +-0.7), rendered, measured with Me
 
 Before = the old direct estimate (photo ratio / assumed average). Real sample photo: 6.5 % -> 4.4 % (eye size limited
 to keep the playful eyes open).
+
+## v17: leg length
+
+Mean absolute error (cm), 6 virtual people:
+
+| | shoulder | waist | hip | thigh | calf | upper arm | neck | leg | arm | chest d. | belly d. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| v16 | 1.3 | 0.5 | 1.0 | 1.0 | 0.3 | 1.5 | 1.3 | 2.8 | 1.4 | 1.2 | 0.8 |
+| v17 | 1.0 | 0.6 | 0.6 | 1.2 | 0.3 | 1.4 | 1.0 | **0.4** | 1.4 | 1.2 | 0.5 |
+
+Causes: hip landmark offset differs by sex (male -0.7 %, female +1.2 % of height); the length fit phases were also
+pulled by width profiles. See PROGRESS.md loop round 8.

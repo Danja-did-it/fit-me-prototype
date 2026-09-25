@@ -22,5 +22,6 @@ Screenshots: `docs/screenshots/`.
 | v14 | 25.09.2026 | Gesichtsform per Analyse durch Synthese: Modellkopf wird gerendert, mit demselben Gesichtsmodell vermessen und an das Foto angepasst – Gesichtsproportionen-Fehler 5 % → ≤ 1 % (Test), Lippen/Kiefer über passendere Formen | – |
 | v15 | 25.09.2026 | Augenbrauen (Form, Dicke, Bogen) und Lippen (Mundwinkel, Lippenhöhe, Amorbogen) aus dem Gesichts-Scan; Brauenfarbe aus den dunkelsten Brauen-Pixeln – Brauen gut lesbar | – |
 | v16 | 25.09.2026 | Ohren in Hautfarbe (vorher teils Haarfarbe), natürliche Haarkante über und hinter dem Ohr | – |
+| v17 | 26.09.2026 | Beinlänge: Fehler 2,8 → 0,4 cm (Hüftpunkt je Geschlecht kalibriert, Längen nicht mehr von Breiten-Profilen verzogen); Schulter, Hüfte, Hals ebenfalls genauer | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

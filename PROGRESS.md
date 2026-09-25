@@ -197,3 +197,10 @@
 - Loop round 7 (v16): ears were painted with hair color (the back-of-head hair rule reached over them) -> speckled
   brown ears. Ear points now come from the MakeHuman ear-scale targets (points moved > 25 % of the max); ears and a box
   around them are never hair. Short hair side edge arcs above the ear and runs down behind it to the nape.
+- Loop round 8 (v17): leg length (worst body error, 2.8 cm, legs always too short). Two causes:
+  1. MediaPipe's hip point sits ~0.7 % of the height below the male hip joint but ~1.2 % above the female one
+     (8 virtual people) -> leg landmark offsets per sex, blended with the gender slider.
+  2. The fit used the leg length as a knob for the width profiles (shorter legs move the measuring heights to wider
+     model rows): with the true legs the leg error was 0.0 but profile errors higher. Length phases now only look at
+     the measured lengths. Result (6 people): leg 2.8 -> 0.4 cm, shoulder 1.5 -> 1.0, hip 1.1 -> 0.6, neck 1.7 -> 1.0,
+     belly 0.8 -> 0.5; thigh 1.0 -> 1.2, waist 0.5 -> 0.6. Next: arm length always 0.7-1.9 cm short.
