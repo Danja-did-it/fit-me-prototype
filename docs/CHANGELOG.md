@@ -18,5 +18,6 @@ Screenshots: `docs/screenshots/`.
 | **v10** | 25.09.2026 | **Scan-Präzision**: Prüf-Werkzeug mit virtuellen Menschen, geführte Aufnahme mit Live-Posenprüfung + Serienbild, dichte Umriss-Profile, kalibrierte Messpunkte, exakte Querschnitte, Weißabgleich übers Augenweiß, Kleidung herausrechnen, ± pro Maß – Hüfte 4,5 → 1,1 cm, Oberschenkel 3,5 → 1,0 cm, Wade 1,4 → 0,2 cm (siehe docs/ACCURACY.md) | – |
 | v11 | 25.09.2026 | Farbtreue: robuster Weißabgleich (Augenweiß), neutrale Tonwertkurve + neutrales Licht – Haut wird nicht mehr grauweiß | – |
 | v12 | 25.09.2026 | Lebendige Augen (Iris, Pupille, Glanzpunkt, Wimpernlinie), Kopf in 0,33-cm-Würfeln, saubere Tanktop-Kanten | v12-face-eyes.png, v11-tanktop.png |
+| v13 | 25.09.2026 | Haaransatz (Mitte + Schläfen) und Haarlänge an den Seiten aus der Haar-Maske gemessen – Stirnhöhe individuell | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

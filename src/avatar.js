@@ -365,6 +365,13 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     const face = { eye, chinY, mouthY: chinY + 0.39 * (eye.y - chinY), noseY: chinY + 0.64 * (eye.y - chinY), eyeL: W.eyeL, eyeR: W.eyeR };
     const s = this.body.height / 1.75;
     const ctx = { W, L, face, s, waistY: W.hipL[1] + 0.1 * s };
+    // hair line from the hair scan (center + temples, in eye-to-chin units), else a natural default
+    const hl = this.body.look.hair, ec = eye.y - chinY;
+    ctx.hairLine = (x) => {
+      const t = Math.min(1, Math.abs(x) / (0.055 * s));
+      if (hl.line != null) return eye.y + (hl.line + ((hl.lineTemple ?? hl.line + 0.12) - hl.line) * t) * ec;
+      return eye.y + 0.058 * s + 0.012 * s * t;
+    };
 
     const byJoint = {};
     const stats = { total: 0, slow: 0, fast: 0, fat: 0, other: 0 };
@@ -491,7 +498,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     } else if (head) {
       // hair line (relative to the eyes), style from the scan
       const style = look.hair.style;
-      const hairTop = y > E.y + 0.066 * s || (y > E.y + 0.05 * s && z < E.z - 0.01);
+      const hairTop = y > ctx.hairLine(x) + 0.006 * s || (y > ctx.hairLine(x) - 0.01 * s && z < E.z - 0.01);
       const hairBack = z < E.z - 0.075 * s && y > E.y - 0.05 * s;
       const hairSide = ax > 0.058 * s && y > E.y + 0.012 * s && z < E.z - 0.025 * s && z > E.z - 0.1 * s;
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
@@ -600,7 +607,11 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
     const R = [0.083 * s, 0.108 * s + top, 0.103 * s];   // skull radii (just under the hair)
-    const bottom = style === 'short' ? E.y - 0.045 * s : style === 'medium' ? face.chinY - 0.005 * s : W.shoulderL[1] - 0.14 * s;
+    let bottom = style === 'short' ? E.y - 0.045 * s : style === 'medium' ? face.chinY - 0.005 * s : W.shoulderL[1] - 0.14 * s;
+    // real length from the hair scan (medium / long only)
+    if (style !== 'short' && look.sideEnd != null) {
+      bottom = Math.min(E.y - 0.03 * s, Math.max(W.shoulderL[1] - 0.3 * s, face.chinY - look.sideEnd * (E.y - face.chinY)));
+    }
     const col = new THREE.Color(this.body.colors.hair);
     // radial distance (1 = skull surface); below the center the shape hangs straight down
     const rad = (x, y, z) => {
@@ -614,7 +625,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       const frontZ = z - C[2];
       // face opening: no hair in front of the face below the hair line (unless fringe)
       // natural hair line: a little higher at the temples
-      const hairLine = look.bangs ? E.y + 0.012 * s : E.y + 0.058 * s + 0.012 * s * Math.min(1, Math.abs(x) / (0.06 * s));
+      const hairLine = look.bangs ? E.y + 0.012 * s : ctx.hairLine(x);
       if (frontZ > 0.03 * s && y < hairLine) return false;
       // sides in front of the ears only above the temple for short hair
       // short: sides only above the ears, back down to the nape

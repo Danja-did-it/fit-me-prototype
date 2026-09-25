@@ -178,3 +178,7 @@
   drawing on the face surface (white, iris in scanned color, pupil, catch light, lash line), 12 % larger than real
   (playful, readable), no crease shading + lifted brightness in the eye socket. Head + neck now 0.33 cm cubes
   (hands 0.5 cm, body 1 cm): 42.5k cubes, 186 ms.
+- Loop round 4 (v13): hairline + hair length from the hair mask. Before: fixed hairline height for everyone.
+  Now the hair segmenter is scanned upward from the brows: hairline at the face center and at the temples (+-22 % face
+  width, never lower than the center -> no "inverted triangle"), stored as share of eye-chin distance; side hair end
+  (for medium/long hair) from the lowest hair pixel beside the face. Avatar uses both for the scalp edge and bangs.

@@ -182,7 +182,27 @@ export async function analyzeFace(image, pose) {
   // hair length: where the side hair ends, relative to the chin (in face heights)
   const endBelowChin = (sideBottom - L[152].y) / fh;
   const hairStyle = bald ? 'none' : endBelowChin > 0.9 ? 'long' : endBelowChin > -0.15 ? 'medium' : 'short';
+  // hair line (center + temples) and side length, in units of the eye-to-chin distance
+  // (so they scale with the head of the avatar)
+  const eyeY = (L[159].y + L[386].y) / 2, eyeChin = L[152].y - eyeY;
+  const lineAt = (cx, halfW) => {
+    const browY = (L[105].y + L[334].y) / 2;
+    for (let y = Math.round(browY); y > 0; y--) {
+      let n = 0, h = 0;
+      for (let x = Math.round(cx - halfW); x <= cx + halfW; x++) { n++; if (hairMask[y * CROP + x] > 0) h++; }
+      if (n && h / n > 0.5) return (eyeY - y) / eyeChin;
+    }
+    return null;
+  };
+  const line = lineAt(L[168].x, fw * 0.12);
+  // temples measured inside the forehead (+-22 % of face width, not above the ears), and never lower
+  // than the center line (temples recede, they do not come down)
+  let lineTemple = (() => { const a = lineAt(L[168].x - fw * 0.22, fw * 0.05), b = lineAt(L[168].x + fw * 0.22, fw * 0.05); return a !== null && b !== null ? (a + b) / 2 : a ?? b; })();
+  if (lineTemple !== null && line !== null) lineTemple = Math.max(lineTemple, line - 0.03);
   const hairInfo = {
+    line: line !== null ? clamp(line, 0.25, 1.6) : null,             // hair line above the eyes
+    lineTemple: lineTemple !== null ? clamp(lineTemple, 0.25, 1.8) : null,
+    sideEnd: hn ? clamp((sideBottom - L[152].y) / eyeChin, -1.2, 4) : null, // side hair end below the chin
     style: hairStyle,
     top: clamp((top - minY) / fh / 0.22, 0.4, 2),     // volume on top
     width: clamp(maxW / fw / 1.15, 0.8, 1.6),          // volume at the sides
