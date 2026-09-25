@@ -45,13 +45,17 @@ export async function analyze(image) {
     // copy the mask: MediaPipe frees its memory when the result is closed
     const mask = { data: m.getAsFloat32Array().slice(), width: m.width, height: m.height };
     const landmarks = result.landmarks[0];
+    // sharper silhouette for the measurements (falls back to the pose mask)
+    let fineMask = null;
+    try { fineMask = await refineMask(image, mask); } catch (e) { console.warn('mask refinement failed', e); }
     let outfit = null;
     try { outfit = await analyzeOutfit(image, landmarks, mask); } catch (e) { console.warn('outfit analysis failed', e); }
     const colors = sampleColors(image, landmarks, mask);
     if (outfit) Object.assign(colors, outfit.colors);
     return {
       landmarks,
-      mask,
+      mask: fineMask || mask,
+      coarseMask: mask,
       outfit,
       colors,
       width: image.naturalWidth || image.width,
@@ -191,7 +195,7 @@ function loadSegmenter() {
       const vision = await FilesetResolver.forVisionTasks(`${BASE}/wasm`);
       const opts = (delegate) => ({
         baseOptions: { modelAssetPath: `${BASE}/selfie_multiclass_256x256.tflite`, delegate },
-        runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false,
+        runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: true,
       });
       try { return await ImageSegmenter.createFromOptions(vision, opts('GPU')); }
       catch { return ImageSegmenter.createFromOptions(vision, opts('CPU')); }
@@ -296,4 +300,66 @@ export function scanQuality(scan, view) {
     tips.push('Für das Seitenfoto 90° drehen – eine Schulter zeigt zur Kamera.');
   }
   return tips;
+}
+
+// ---------------------------------------------------------------------------
+// Sharper person mask: the pose model's mask is computed at 256 px and scaled up, so
+// its edge is blurry. A "guided filter" (He et al.) snaps that soft mask to the real
+// edges of the photo (edge-aware refinement, like in photo matting apps).
+// ---------------------------------------------------------------------------
+function boxFilter(src, W, H, r) {
+  // mean over a (2r+1)^2 window using an integral image
+  const I = new Float64Array((W + 1) * (H + 1));
+  for (let y = 0; y < H; y++) {
+    let row = 0;
+    for (let x = 0; x < W; x++) { row += src[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; }
+  }
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
+      const sum = I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0];
+      out[y * W + x] = sum / ((x1 - x0) * (y1 - y0));
+    }
+  }
+  return out;
+}
+
+async function refineMask(image, coarse) {
+  const W = coarse.width, H = coarse.height;
+  let area0 = 0;
+  for (let i = 0; i < coarse.data.length; i++) if (coarse.data[i] > 0.5) area0++;
+  if (!area0) return null;
+  // guide image: the photo in gray at mask resolution
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0, W, H);
+  const px = ctx.getImageData(0, 0, W, H).data;
+  const I = new Float32Array(W * H);
+  for (let i = 0; i < I.length; i++) I[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+  const p = coarse.data;
+  const r = Math.max(4, Math.round(Math.min(W, H) / 200)), eps = 1e-3;
+  const mI = boxFilter(I, W, H, r), mP = boxFilter(p, W, H, r);
+  const II = new Float32Array(W * H), IP = new Float32Array(W * H);
+  for (let i = 0; i < I.length; i++) { II[i] = I[i] * I[i]; IP[i] = I[i] * p[i]; }
+  const mII = boxFilter(II, W, H, r), mIP = boxFilter(IP, W, H, r);
+  const A = new Float32Array(W * H), B = new Float32Array(W * H);
+  for (let i = 0; i < I.length; i++) {
+    const a = (mIP[i] - mI[i] * mP[i]) / (mII[i] - mI[i] * mI[i] + eps);
+    A[i] = a; B[i] = mP[i] - a * mI[i];
+  }
+  const mA = boxFilter(A, W, H, r), mB = boxFilter(B, W, H, r);
+  const data = new Float32Array(W * H);
+  let area1 = 0;
+  for (let i = 0; i < data.length; i++) {
+    // only move the edge a little: keep the pose mask where it is certain
+    const q = Math.min(1, Math.max(0, mA[i] * I[i] + mB[i]));
+    data[i] = p[i] > 0.97 || p[i] < 0.03 ? p[i] : q;
+    if (data[i] > 0.5) area1++;
+  }
+  const ratio = area1 / area0;
+  if (ratio < 0.9 || ratio > 1.1) { console.info('fine mask rejected', ratio); return null; }
+  return { data, width: W, height: H, refined: ratio };
 }

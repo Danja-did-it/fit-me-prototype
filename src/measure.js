@@ -83,10 +83,7 @@ export function measureFront(scan, height) {
 
   // One thigh, 30 % down from hip to knee. Cut at the body center line,
   // so legs that touch each other are not measured as one.
-  const hipL = px(scan, 23), kneeL = px(scan, 25);
-  const leftSide = hipL.x < cx;
-  const thighPx = runWidth(mask, hipL.y + 0.3 * (kneeL.y - hipL.y), hipL.x,
-    leftSide ? 0 : cx, leftSide ? cx : mask.width - 1);
+
 
   // Arm = shoulder -> elbow -> wrist (average of both sides)
   const armPx = (dist(px(scan, 11), px(scan, 13)) + dist(px(scan, 13), px(scan, 15)) +
@@ -94,30 +91,30 @@ export function measureFront(scan, height) {
 
   // Limb girths (widths seen from the front), cut at +-9 cm around the limb so a
   // touching body part is not counted
-  const limb = (a, b, t, side) => {
-    const pa = px(scan, a), pb = px(scan, b);
-    const p = { x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t };
-    const lim = 0.09 / k;
-    let lo = p.x - lim, hi = p.x + lim;
-    if (side !== undefined) { if (p.x < cx) hi = Math.min(hi, cx); else lo = Math.max(lo, cx); }
-    return runWidth(mask, p.y, p.x, lo, hi) * k;
-  };
+  // Limb width measured from its OUTER edge (always next to air): twice the distance
+  // from the outer edge to the limb's center line. A torso or other leg touching the
+  // inner side does not matter then.
+  const limb = (a, b, t) => outerWidth(scan, a, b, t, cx, k);
   const avg2 = (f) => (f(0) + f(1)) / 2;
   const mouthY = (px(scan, 9).y + px(scan, 10).y) / 2;
 
+  // pose on the photo (the model is measured in the same pose, fit.js)
+  const ang = (a, b) => Math.atan2(Math.abs(px(scan, b).x - px(scan, a).x), Math.abs(px(scan, b).y - px(scan, a).y));
+  const armAngle = (ang(11, 13) + ang(12, 14)) / 2, legAngle = (ang(23, 27) + ang(24, 28)) / 2;
+
   const s = height / 1.75;
   return {
-    height,
+    height, armAngle, legAngle,
     // neck: narrowest row between 30 % and 85 % of the way from the shoulders to the mouth
     // (same definition as on the model, fit.js)
     neckWidth: clamp(neckMin(mask, sh.y, mouthY, px(scan, 0).x, 0.08 / k) * k, 0.06 * height, 0.085 * height),
     upperArmWidth: clamp(avg2((i) => limb(11 + i, 13 + i, 0.55)), 0.045 * height, 0.075 * height),
     forearmWidth: clamp(avg2((i) => limb(13 + i, 15 + i, 0.3)), 0.038 * height, 0.058 * height),
-    calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3, true)), 0.05 * height, 0.078 * height),
+    calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3)), 0.05 * height, 0.078 * height),
     shoulderWidth: clamp(runWidth(mask, sh.y + 0.03 * (bottom - top), cx) * k, 0.22 * height, 0.30 * height),
     waistWidth: clamp(waistPx * k, 0.13 * height, 0.24 * height),
     hipWidth: clamp(hipPx * k, 0.17 * height, 0.26 * height),
-    thighWidth: clamp(thighPx * k, 0.07 * height, 0.12 * height),
+    thighWidth: clamp(avg2((i) => limb(23 + i, 25 + i, 0.3)), 0.07 * height, 0.12 * height),
     legLength: clamp((bottom - hip.y) * k, 0.42 * height, 0.60 * height),
     armLength: clamp(armPx * k, 0.40 * s, 0.70 * s),
   };
@@ -159,6 +156,11 @@ export function bodyFromScans(scans, height) {
   }
   if (scans.side.length) Object.assign(body, medianOf(scans.side.map((sc) => measureSide(sc, height))));
   body.height = height;
+  // dense outline profiles (median over all photos of that view)
+  body.profile = {
+    ...(scans.front.length ? medianProfile(scans.front.map((sc) => profileFront(sc, height))) : {}),
+    ...(scans.side.length ? medianProfile(scans.side.map((sc) => profileSide(sc, height))) : {}),
+  };
   // human proportions: waist never wider than the shoulders, hips close to them
   body.waistWidth = Math.min(body.waistWidth, body.shoulderWidth * 0.9);
   body.hipWidth = Math.min(body.hipWidth, body.shoulderWidth * 1.1);
@@ -175,4 +177,99 @@ export function bodyFromScans(scans, height) {
     body.look.outfit = { top: o.top, sleeves: o.sleeves, bottoms: o.bottoms, shoes: o.shoes };
   }
   return body;
+}
+
+// ---------------------------------------------------------------------------
+// Dense silhouette profiles: widths (front) and depths (side) at many heights,
+// relative to the body landmarks. The model is measured at exactly the same
+// relative heights (fit.js), so the whole outline is matched, not just 5 spots.
+// ---------------------------------------------------------------------------
+export const TORSO_T = [0.05, 0.12, 0.2, 0.28, 0.36, 0.44, 0.52, 0.6, 0.68, 0.76]; // hip (0) -> shoulder (1)
+export const LEG_T = [0.3, 0.45, 0.6, 0.75];                                      // along thigh / calf (skips the crotch)
+
+// 2 x distance from the bone line (between landmarks a and b, at fraction t) to the limb's
+// outer edge (the side facing away from the body center cx). Same definition as on the model.
+function outerWidth(scan, a, b, t, cx, k) {
+  const { mask } = scan;
+  const pa = px(scan, a), pb = px(scan, b);
+  const p = { x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t };
+  const y = Math.round(Math.min(mask.height - 1, Math.max(0, p.y)));
+  const outward = p.x < cx ? -1 : 1, lim = 0.15 / k;
+  const x = Math.round(p.x);
+  if (!isPerson(mask, x, y)) return 0;
+  let d = 0;
+  while (d < lim && isPerson(mask, x + outward * (d + 1), y)) d++;
+  return 2 * (d + 0.5) * k;
+}
+
+// x of the arm's center line (shoulder -> elbow -> wrist) at height y, or null
+function armX(scan, y, side) {
+  const [s, e, w] = side === 'L' ? [11, 13, 15] : [12, 14, 16];
+  const pts = [px(scan, s), px(scan, e), px(scan, w)];
+  for (let i = 0; i < 2; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if ((y - a.y) * (y - b.y) <= 0 && a.y !== b.y) return a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
+  }
+  return null;
+}
+
+export function profileFront(scan, height) {
+  const { mask } = scan;
+  const { top, bottom } = verticalExtent(mask);
+  const k = height / (bottom - top);
+  const hip = mid(px(scan, 23), px(scan, 24)), sh = mid(px(scan, 11), px(scan, 12));
+  const armR = 0.04 / k, handR = 0.045 / k;
+  const torso = TORSO_T.map((t) => {
+    if (t > 0.62) return 0; // near the armpits the arms hide the torso edge: not measurable
+    const y = hip.y + (sh.y - hip.y) * t;
+    // cut at the inner side of each arm (following the arm line) or hand (below the wrists)
+    const cut = (side, idx) => {
+      const x = armX(scan, y, side);
+      if (x !== null) return x;
+      const w = px(scan, idx);
+      return y > w.y ? w.x : null; // hands hang next to the hips
+    };
+    const xs = [cut('L', 15), cut('R', 16)].filter((v) => v !== null).sort((a, b) => a - b);
+    let lo = 0, hi = mask.width - 1;
+    if (xs.length === 2) {
+      const r = armX(scan, y, 'L') !== null ? armR : handR;
+      lo = xs[0] + r; hi = xs[1] - r;
+    }
+    return runWidth(mask, y, hip.x, lo, hi) * k;
+  });
+  // leg widths like the model: 2 x distance from the bone line to the outer edge
+  const leg = (a) => LEG_T.map((t) => {
+    const w = [[23, 25, 27], [24, 26, 28]].map(([h, kn, an]) => outerWidth(scan, a === 'thigh' ? h : kn, a === 'thigh' ? kn : an, t, hip.x, k));
+    return (w[0] + w[1]) / 2;
+  });
+  return { pTorso: clean(torso), pThigh: clean(leg('thigh')), pCalf: clean(leg('calf')) };
+}
+
+export function profileSide(scan, height) {
+  const { mask } = scan;
+  const { top, bottom } = verticalExtent(mask);
+  const k = height / (bottom - top);
+  const hip = mid(px(scan, 23), px(scan, 24)), sh = mid(px(scan, 11), px(scan, 12));
+  const knee = mid(px(scan, 25), px(scan, 26)), ankle = mid(px(scan, 27), px(scan, 28));
+  const torso = TORSO_T.map((t) => runWidth(mask, hip.y + (sh.y - hip.y) * t, hip.x + (sh.x - hip.x) * t) * k);
+  const seg = (p, q) => LEG_T.map((t) => runWidth(mask, p.y + (q.y - p.y) * t, p.x + (q.x - p.x) * t) * k);
+  return { pTorsoD: clean(torso), pThighD: clean(seg(hip, knee)), pCalfD: clean(seg(knee, ankle)) };
+}
+
+// drop outliers (hand on a chair, bag ...): a value more than 20 % away from its
+// neighbors is set to 0 (= ignored by the fit)
+function clean(arr) {
+  return arr.map((v, i) => {
+    const nb = [arr[i - 1], arr[i + 1]].filter((x) => x > 0);
+    if (!v || !nb.length) return v;
+    const m = nb.reduce((a, b) => a + b, 0) / nb.length;
+    return Math.abs(v - m) > 0.2 * m ? 0 : v;
+  });
+}
+
+// element-wise median of several profiles (zeros = missing)
+export function medianProfile(list) {
+  const out = {};
+  for (const key of Object.keys(list[0] || {})) out[key] = list[0][key].map((_, i) => { const v = list.map((p) => p[key][i]).filter((x) => x > 0); return v.length ? median(v) : 0; });
+  return out;
 }

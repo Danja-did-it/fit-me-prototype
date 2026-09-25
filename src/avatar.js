@@ -269,8 +269,8 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
   shape(weights = this.targetWeights()) {
     const H = this.H, comp = this.composition;
     let p = mix(H, weights);
-    const spread = 0.1 + 0.12 * Math.max(0, this.fatGain || 0) + 0.05 * Math.max(0, comp.muscle); // hands clear the hips
-    p = poseBody(H, p, { armSpread: spread, legSpread: 0.025 });
+    const spread = this.poseSpread ?? (0.1 + 0.12 * Math.max(0, this.fatGain || 0) + 0.05 * Math.max(0, comp.muscle)); // hands clear the hips
+    p = poseBody(H, p, { armSpread: spread, legSpread: this.poseLegSpread ?? 0.025 });
     let minY = Infinity, maxY = -Infinity;
     for (let v = 0; v < BODY_VERTS; v++) { minY = Math.min(minY, p[v * 3 + 1]); maxY = Math.max(maxY, p[v * 3 + 1]); }
     const s = this.body.height / (maxY - minY);

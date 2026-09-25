@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
-import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS } from './fit.js';
+import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
 import { Animator } from './anim.js';
 import { GROUPS } from './anatomy.js';
 // scan.js (MediaPipe, large) is loaded only when the user starts a scan -> faster first load
@@ -257,7 +257,7 @@ function applyScans() {
   avatar.body = body;
   avatar.person = { gender: Number($('gender').value), age: Number($('age').value) || 30 };
   // fit the human model to everything that was measured
-  const keys = [...(scans.front.length ? FRONT_KEYS : []), ...(scans.side.length ? SIDE_KEYS : [])];
+  const keys = [...(scans.front.length ? [...FRONT_KEYS, ...FRONT_PROFILES] : []), ...(scans.side.length ? [...SIDE_KEYS, ...SIDE_PROFILES] : [])];
   if (avatar.H && keys.length) fitResult = fitToScan(avatar, body, keys);
   else { avatar.fit = { weight: 0.5, muscle: 0.5, local: {} }; fitResult = null; }
   avatar.fit.face = faceTargets(scans.face?.measures); // face shape from the face scan
@@ -394,5 +394,6 @@ function updateLook() {
   applyScans();
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+window.fitme = { runScan, applyScans, scene, camera, renderer, THREE }; // for scripts/validate.mjs
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
