@@ -202,17 +202,17 @@ export function fitToScan(av, target, keys) {
 
 // Face measurements from the face scan (1 = average) -> MakeHuman face targets (-1..+1).
 // The factor turns "10 % wider than average" into a target value.
-const FACE_MAP = [
+export const FACE_MAP = [
   ['noseWidth', ['nose/nose-scale-horiz'], 3],
   ['noseLength', ['nose/nose-scale-vert'], 3],
   ['mouthWidth', ['mouth/mouth-scale-horiz'], 3],
-  ['lipUpper', ['mouth/mouth-upperlip-volume'], 1.5],
-  ['lipLower', ['mouth/mouth-lowerlip-volume'], 1.5],
+  ['lipUpper', ['mouth/mouth-upperlip-height'], 1.5],
+  ['lipLower', ['mouth/mouth-lowerlip-height'], -1.5], // taller lower lip target -> lip moves, ratio drops (measured)
   ['eyeSize', ['eyes/l-eye-scale', 'eyes/r-eye-scale'], 3],
   ['eyeSpacing', ['eyes/l-eye-trans', 'eyes/r-eye-trans'], 3, 'in', 'out'],
   ['faceLong', ['head/head-scale-vert'], 2.5],
   ['chin', ['chin/chin-height'], 2.5],
-  ['jaw', ['chin/chin-width'], 2.5],
+  ['jaw', ['chin/chin-bones'], 2.5], // chin-width hardly moves the jaw corners (measured with facefit.js)
 ];
 export function faceTargets(face) {
   const out = {};

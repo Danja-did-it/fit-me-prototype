@@ -182,3 +182,10 @@
   Now the hair segmenter is scanned upward from the brows: hairline at the face center and at the temples (+-22 % face
   width, never lower than the center -> no "inverted triangle"), stored as share of eye-chin distance; side hair end
   (for medium/long hair) from the lowest hair pixel beside the face. Avatar uses both for the scalp edge and bangs.
+- Loop round 5 (v14): face shape by analysis by synthesis (src/facefit.js). The smooth model head is rendered offscreen
+  (640 px, eyes painted), the same MediaPipe face model finds its 478 points, the same ratios are measured (face.js
+  faceRatios) and the 10 face target groups are solved with a finite-difference Jacobian + damped Gauss-Newton with line
+  search (~15 renders, ~1 s on GPU). Findings: the old "average face" constants were off (model nose length 0.27 vs 0.33
+  assumed, upper lip 0.032 vs 0.045); lip volume and chin width hardly move their landmarks -> lip height and chin bones
+  targets; lips weighted 0.3 (only a few pixels tall). Eyes may hardly shrink (-0.35), else lids close to slits.
+  Test with known faces: ratio error 4.6-5.1 % -> 0.1-1.1 %, target error 0.19-0.44 -> 0.04-0.16. Sample photo 6.5 -> 4.4 %.

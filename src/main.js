@@ -1,5 +1,6 @@
 // Entry point: sets up the Three.js scene, camera, lights and render loop.
 import * as THREE from 'three';
+import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
@@ -259,7 +260,24 @@ function showMeasures(body) {
   });
   $('measures').innerHTML = `<tr><td>Größe</td><td colspan="2">${cm(body.height)} <span class="src">eingegeben</span></td></tr>` +
     (model ? '<tr class="head"><td></td><td>Foto</td><td>Modell</td></tr>' : '') + rows.join('') +
-    (fitResult ? `<tr><td colspan="3" class="src">Modell-Abweichung im Mittel ${(fitResult.error * 100).toFixed(1)} % (${Math.round(fitResult.ms)} ms)</td></tr>` : '');
+    (fitResult ? `<tr><td colspan="3" class="src">Modell-Abweichung im Mittel ${(fitResult.error * 100).toFixed(1)} % (${Math.round(fitResult.ms)} ms)</td></tr>` : '') +
+    (faceFit.result ? `<tr><td colspan="3" class="src">Gesicht: Abweichung ${(faceFit.result.error0 * 100).toFixed(1)} → ${(faceFit.result.error * 100).toFixed(1)} % (${Math.round(faceFit.result.ms)} ms)</td></tr>` : '');
+}
+
+// Face fit (facefit.js) is async and costs ~1 s, so its result is kept until the face scan,
+// gender, age or the body fit (weight/muscle also shape the face) change.
+let faceFit = { obj: null, key: null, face: null, result: null };
+const faceKey = () => (scans.face ? [avatar.person.gender, avatar.person.age, avatar.fit.weight.toFixed(2), avatar.fit.muscle.toFixed(2)].join() : null);
+async function startFaceFit(key) {
+  const obj = scans.face;
+  faceFit = { obj, key, face: null, result: null };
+  const { fitFace } = await import('./facefit.js');
+  const r = await fitFace(avatar, obj.ratios, obj.measures).catch((e) => (console.warn('face fit failed', e), null));
+  if (faceFit.obj !== obj || faceFit.key !== key || !r) return; // newer scan meanwhile / failed: keep the estimate
+  Object.assign(faceFit, { face: r.face, result: r });
+  avatar.fit.face = r.face;
+  rebuild();
+  showMeasures(avatar.body);
 }
 
 function applyScans() {
@@ -274,7 +292,10 @@ function applyScans() {
   const keys = [...(scans.front.length ? [...FRONT_KEYS, ...FRONT_PROFILES] : []), ...(scans.side.length ? [...SIDE_KEYS, ...SIDE_PROFILES] : [])];
   if (avatar.H && keys.length) fitResult = fitToScan(avatar, body, keys);
   else { avatar.fit = { weight: 0.5, muscle: 0.5, local: {} }; fitResult = null; }
-  avatar.fit.face = faceTargets(scans.face?.measures); // face shape from the face scan
+  avatar.fit.face = faceTargets(scans.face?.measures); // face shape: quick estimate first ...
+  const fk = faceKey();
+  if (fk && faceFit.face && faceFit.obj === scans.face && faceFit.key === fk) avatar.fit.face = faceFit.face;
+  else if (fk && scans.face.ratios) startFaceFit(fk); // ... then the exact fit on the rendered model head (~1 s)
   rebuild();
   showMeasures(body);
   showLook(body);
@@ -408,6 +429,6 @@ function updateLook() {
   applyScans();
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
-window.fitme = { runScan, applyScans, scene, camera, renderer, THREE }; // for scripts/validate.mjs
+window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE }; // for scripts/validate.mjs
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background

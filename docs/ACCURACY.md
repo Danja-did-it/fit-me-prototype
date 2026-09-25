@@ -40,3 +40,16 @@ haben zusätzlich Kamera-, Licht- und Kleidungsfehler – deshalb mehrere Aufnah
 5. **Exakte Querschnitte** durch das Netz statt Punkte in einem Streifen (Netzzeilen liegen 2–4 cm auseinander).
 6. Anpassung in 5 Phasen (Längen ↔ Breiten abwechselnd), dichte Umriss-Profile (10 Rumpf-, 4+4 Bein-Höhen).
 7. Kante der Personen-Maske per Guided Filter an die Bildkanten angelegt.
+
+## Face fit (v14)
+
+Virtual faces with known face targets (random +-0.7), rendered, measured with MediaPipe and fitted again:
+
+| Face | ratio error before | after | target error (0..1) |
+|---|---|---|---|
+| 1 | 4.6 % | 0.1 % | 0.04 |
+| 2 | 5.1 % | 0.7 % | 0.12 |
+| 3 | 2.8 % | 1.1 % | 0.16 |
+
+Before = the old direct estimate (photo ratio / assumed average). Real sample photo: 6.5 % -> 4.4 % (eye size limited
+to keep the playful eyes open).

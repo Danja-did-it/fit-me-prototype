@@ -8,24 +8,14 @@
 // From that we measure the face (relative to the face width), pick real colors
 // (skin, eyes, lips, brows, hair) and guess the hairstyle and facial hair.
 import { FilesetResolver, FaceLandmarker, ImageSegmenter } from '@mediapipe/tasks-vision';
+import './mplog.js';
 
 const BASE = import.meta.env.BASE_URL + 'mediapipe';
 const CROP = 512;
 let modelsPromise = null;
 
-// MediaPipe prints harmless status lines ("INFO: Created TensorFlow Lite XNNPACK
-// delegate") through console.error. Pass those on as info so real errors stay visible.
-function quietInfoLogs() {
-  const orig = console.error;
-  console.error = (...args) => {
-    if (typeof args[0] === 'string' && /^(INFO:|I\d{4} )/.test(args[0])) return console.info(...args);
-    orig(...args);
-  };
-}
-
 function loadModels() {
   if (!modelsPromise) {
-    quietInfoLogs();
     modelsPromise = (async () => {
       const vision = await FilesetResolver.forVisionTasks(`${BASE}/wasm`);
       const make = async (Cls, opts) => {
@@ -74,6 +64,40 @@ function headBox(pose, w, h) {
   return { x: nose.x - size / 2, y: nose.y - size * 0.5, size };
 }
 
+// Raw face proportions from the 478 landmarks (distances in the image, relative to face
+// width / height). The same function measures the photo AND the rendered model head
+// (facefit.js), so both are compared with exactly the same ruler.
+export function faceRatios(L) {
+  const fw = dist(L[234], L[454]), fh = dist(L[10], L[152]);
+  const eyeW = (dist(L[33], L[133]) + dist(L[362], L[263])) / 2;
+  return {
+    faceLong: fh / fw,
+    jaw: dist(L[172], L[397]) / fw,
+    eyeSpacing: dist(L[133], L[362]) / fw,
+    eyeSize: eyeW / fw,
+    eyeOpen: ((dist(L[159], L[145]) + dist(L[386], L[374])) / 2) / eyeW,
+    noseWidth: dist(L[64], L[294]) / fw,
+    noseLength: dist(L[168], L[2]) / fh,
+    mouthWidth: dist(L[61], L[291]) / fw,
+    lipUpper: dist(L[0], L[13]) / fh,
+    lipLower: dist(L[14], L[17]) / fh,
+    chin: dist(L[17], L[152]) / fh,
+  };
+}
+// average face (ratio 1) and allowed range of the normalized measures
+export const RATIO_AVG = { faceLong: 1.18, jaw: 0.8, eyeSpacing: 0.235, eyeSize: 0.2, eyeOpen: 0.3, noseWidth: 0.25,
+  noseLength: 0.33, mouthWidth: 0.36, lipUpper: 0.045, lipLower: 0.055, chin: 0.21 };
+const RATIO_LIMIT = { faceLong: [0.85, 1.18], jaw: [0.82, 1.18], eyeSpacing: [0.85, 1.18], eyeSize: [0.85, 1.2], eyeOpen: [0.6, 1.4],
+  noseWidth: [0.8, 1.25], noseLength: [0.85, 1.2], mouthWidth: [0.8, 1.25], lipUpper: [0.6, 1.6], lipLower: [0.6, 1.6], chin: [0.8, 1.25] };
+
+// Face landmarks on any canvas (used for the rendered model head), in pixels
+export async function detectLandmarks(canvas) {
+  const { face } = await loadModels();
+  const r = face.detect(canvas);
+  if (!r.faceLandmarks?.length) return null;
+  return r.faceLandmarks[0].map((p) => ({ x: p.x * canvas.width, y: p.y * canvas.height }));
+}
+
 // Analyze the face on the front photo. Returns null if no face was found.
 export async function analyzeFace(image, pose) {
   const { face, hair } = await loadModels();
@@ -96,20 +120,9 @@ export async function analyzeFace(image, pose) {
   // ---- measurements (ratios, 1 = average face) ----
   const fw = dist(L[234], L[454]);            // face width (cheek to cheek)
   const fh = dist(L[10], L[152]);             // forehead to chin
-  const eyeW = (dist(L[33], L[133]) + dist(L[362], L[263])) / 2;
-  const m = {
-    faceLong: clamp(fh / fw / 1.18, 0.85, 1.18),
-    jaw: clamp(dist(L[172], L[397]) / fw / 0.8, 0.82, 1.18),
-    eyeSpacing: clamp(dist(L[133], L[362]) / fw / 0.235, 0.85, 1.18),
-    eyeSize: clamp(eyeW / fw / 0.2, 0.85, 1.2),
-    eyeOpen: clamp(((dist(L[159], L[145]) + dist(L[386], L[374])) / 2) / eyeW / 0.3, 0.6, 1.4),
-    noseWidth: clamp(dist(L[64], L[294]) / fw / 0.25, 0.8, 1.25),
-    noseLength: clamp(dist(L[168], L[2]) / fh / 0.33, 0.85, 1.2),
-    mouthWidth: clamp(dist(L[61], L[291]) / fw / 0.36, 0.8, 1.25),
-    lipUpper: clamp(dist(L[0], L[13]) / fh / 0.045, 0.6, 1.6),
-    lipLower: clamp(dist(L[14], L[17]) / fh / 0.055, 0.6, 1.6),
-    chin: clamp(dist(L[17], L[152]) / fh / 0.21, 0.8, 1.25),
-  };
+  const ratios = faceRatios(L);
+  const m = {};
+  for (const [k, avg] of Object.entries(RATIO_AVG)) m[k] = clamp(ratios[k] / avg, ...RATIO_LIMIT[k]);
 
   // ---- white balance: the white of the eye is almost neutral (slightly warm). Its color on
   // the photo tells us the color of the light; we correct all colors by it - carefully:
@@ -219,6 +232,7 @@ export async function analyzeFace(image, pose) {
 
   return {
     measures: m,
+    ratios,
     wb, fixWB,
     colors: { skin: fixWB(skinMix), eye: fixWB(eyeCol), lip: fixWB(lip), brow: fixWB(brow), hair: fixWB(hairColor), beard: fixWB(mixColors(brow, hairColor)) },
     hair: hairInfo,

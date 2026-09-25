@@ -19,5 +19,6 @@ Screenshots: `docs/screenshots/`.
 | v11 | 25.09.2026 | Farbtreue: robuster Weißabgleich (Augenweiß), neutrale Tonwertkurve + neutrales Licht – Haut wird nicht mehr grauweiß | – |
 | v12 | 25.09.2026 | Lebendige Augen (Iris, Pupille, Glanzpunkt, Wimpernlinie), Kopf in 0,33-cm-Würfeln, saubere Tanktop-Kanten | v12-face-eyes.png, v11-tanktop.png |
 | v13 | 25.09.2026 | Haaransatz (Mitte + Schläfen) und Haarlänge an den Seiten aus der Haar-Maske gemessen – Stirnhöhe individuell | – |
+| v14 | 25.09.2026 | Gesichtsform per Analyse durch Synthese: Modellkopf wird gerendert, mit demselben Gesichtsmodell vermessen und an das Foto angepasst – Gesichtsproportionen-Fehler 5 % → ≤ 1 % (Test), Lippen/Kiefer über passendere Formen | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.
