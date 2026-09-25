@@ -3,7 +3,9 @@
 Browser-Prototyp einer Fitness-App: Foto/Kamera-Scan → 3D-Voxel-Avatar („Pixel-Figur“) von dir,
 Regler für Körperfett und Muskeln, Animationen (Stehen, Gehen, Kniebeuge).
 
-Technik: [Vite](https://vite.dev) + [Three.js](https://threejs.org) + [MediaPipe Pose](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker).
+Technik: [Vite](https://vite.dev) + [Three.js](https://threejs.org) + [MediaPipe](https://ai.google.dev/edge/mediapipe) (Pose, Gesicht, Haare, Kleidung) +
+realistisches Körpermodell aus [MakeHuman/MPFB2](https://github.com/makehumancommunity/mpfb2)-Daten (CC0).
+Versionen, Speicherstände und Recherche: [docs/CHANGELOG.md](docs/CHANGELOG.md), [docs/RESEARCH.md](docs/RESEARCH.md).
 
 **Live:** https://danja-did-it.github.io/fit-me-prototype/ (auf dem Handy öffnen, Kamera erlauben)
 
@@ -14,7 +16,8 @@ Alle Bilder werden **nur im Browser auf deinem Gerät** ausgewertet – es gibt 
 Voraussetzung: [Node.js](https://nodejs.org) ab Version 20.
 
 ```bash
-npm install     # lädt alle Bibliotheken; lädt danach automatisch das Pose-Modell (~9 MB) nach public/mediapipe
+npm install     # lädt alle Bibliotheken, danach automatisch die MediaPipe-Modelle (public/mediapipe)
+                # und baut das Körpermodell aus den MakeHuman-Daten (public/human, ~9 MB)
 npm run dev     # startet den Entwicklungs-Server -> http://localhost:5173 im Browser öffnen
 ```
 
@@ -74,8 +77,13 @@ Die Kamera funktioniert im Browser nur über **HTTPS** (oder `localhost`). Wege 
 ```
 index.html              Seite mit Bedien-Panel
 src/main.js             3D-Szene, Render-Schleife, Verdrahtung der Bedienelemente
-src/avatar.js           Voxel-Figur: Gelenke, Körperteile aus Würfeln, Gewebeart pro Würfel, Ansichten
-src/anatomy.js          Muskeln (Lage, Größe, Fasertyp-Anteil), Fettdepots, Trainingsarten
+src/avatar.js           Voxel-Avatar: Netz mischen, posieren, in Würfel zerlegen, färben, GPU-Skinning
+src/human.js            MakeHuman-Mischer: Makro-/Detail-Varianten, Gelenke, Posen
+src/voxelize.js         Netz -> Würfel (Oberfläche + Außen-Flutfüllung, Normalen, Falten-Schattierung)
+src/fit.js              Modell an Scan-Maße anpassen (Analyse durch Synthese), Gesichts-Varianten
+src/face.js             Gesichts-/Haar-Analyse (478 Gesichtspunkte, Haarmaske)
+src/anatomy.js          Muskelgruppen, Muskeln mit Fasertyp-Anteil, Trainingsarten
+scripts/build-human.mjs lädt MakeHuman-Daten (CC0) und packt sie für den Browser
 src/scan.js             MediaPipe: Pose + Personen-Maske, Kamera, Farben aus dem Foto
 src/measure.js          Maske + Pose -> Maße in Metern (Breiten, Längen, Tiefen)
 src/anim.js             Animationen Stehen / Gehen / Kniebeuge
@@ -92,6 +100,8 @@ PROGRESS.md             Aufgabenliste, Erkenntnisse, Blocker
   Arme oder Beine, die sich berühren, werden nur grob herausgerechnet. Schräge Kamera / Weitwinkel verzerrt.
 - **Nur Front + Seite:** Der Querschnitt jedes Körperteils ist eine Ellipse. Rücken, Po, Brust-Form usw.
   werden nicht einzeln erfasst.
+- **Körpermodell:** MakeHuman-Grundnetz + Varianten; sehr ungewöhnliche Körper (z. B. extrem breite Schultern bei
+  schmaler Taille) liegen teils außerhalb des Modells. Die Tabelle zeigt Foto- vs. Modellwert.
 - **Anatomie vereinfacht:** 23 Hauptmuskeln als weiche Wölbungen auf der Oberfläche; tiefe Muskeln, Sehnenverläufe
   und Unterschiede zwischen Menschen fehlen. Fasertyp-Anteile sind Literatur-Durchschnitte (stark individuell).
   Die Fasern werden nur an der Oberfläche gezeigt, nicht im Inneren.

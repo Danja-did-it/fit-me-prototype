@@ -127,3 +127,27 @@
   arms away from the hips, clothing advice.
 - Scan guide in the app (collapsible) and in the README. Models on first scan now ~60 MB (cached afterwards).
 - Known: sleeve detection can be wrong when a hand rests on something (sample photo: suit read as short sleeves).
+
+## Iteration 9: realistic body (user: face + proportions still abstract; research, perfectionist, "picture perfect";
+## more scans for more accurate proportions; document all save states)
+- Research (docs/RESEARCH.md): hand-built shapes are the root cause. Statistical / artist-calibrated body models
+  are the state of the art. SMPL-X = research license; Anny (NAVER, 2025, Apache-2.0) is built on MakeHuman
+  data (CC0, 2.4 mm to real scans). Decision: MakeHuman/MPFB2 data (CC0) + own JS mixer (no AGPL code).
+- `scripts/build-human.mjs` (postinstall): base mesh (19,158 pts, 27k triangles, 125 joint cubes), 257 targets
+  (ethnic gender x age, universal muscle x weight, body measures, local muscle/fat, face), game_engine skin
+  weights -> public/human (8.7 MB, not in git).
+- `src/human.js`: MakeHuman macro interpolation (race x gender x age, + muscle x weight), local targets,
+  joints = centers of joint cubes, per-bone limb posing with skin weights (arms down, legs straight).
+- `src/voxelize.js`: surface voxelization + outside flood fill -> closed shell, exact normals, crease shading.
+  1 cm body 66 ms, 0.5 cm 170 ms (Node).
+- `src/avatar.js` rewritten on the mesh: 1 cm body + 0.5 cm head/neck/hands, muscle groups from MakeHuman's own
+  muscle targets (split front/back/inner by normal), fat from fat targets, clothes/face/beard painting, hair
+  volume per style, GPU skinning (4 joint weights per cube, skinned shadows).
+- `src/fit.js`: model measured like the photo; coordinate descent in phases (lengths -> widths -> all).
+  Synthetic test: 12 measures, 2.2 % RMS in < 1 s. Neck = narrowest row (same on photo + model).
+- Multi-scan: front + back photos (widths, lengths) and side photos (depths), several per view, median;
+  file inputs accept multiple photos; table shows photo value (n photos) -> model value + fit error.
+- Person inputs: gender (m / f / diverse) and age.
+- Learned: MakeHuman gender/age live in the ethnic targets (universal ones only muscle/weight);
+  fixed-height neck measure coupled all params -> use narrowest row; rigid cubes crack at knees -> GPU skinning;
+  shadow lookup must be skinned too (worldpos_vertex), else dark blotches.

@@ -398,7 +398,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
         (byJoint[key] ||= []).push({ p: p2, c: new THREE.Color(e.color).multiplyScalar(1 - 0.06 * k), n: e.n });
       }
     }
-    if (this.body.look.hair.style === 'long') this.addLongHair(byJoint, worldOf, ctx, Vd);
+    if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
     const bySize = {};
@@ -491,8 +491,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       const hairSide = ax > 0.058 * s && y > E.y + 0.012 * s && z < E.z - 0.025 * s && z > E.z - 0.1 * s;
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
       if (style !== 'none' && jn === 'head' && (hairTop || hairBack || hairSide || bangs)) {
-        color = c.hair;
-        result = { layers: Math.max(1, Math.round(((style === 'short' ? 1 : 2) * 0.01) / q.size)), color: c.hair };
+        color = c.hair; // scalp under the hair volume (see addHair)
       }
       // eyebrows: thin arch above each eye
       const ex = ax - E.x;
@@ -556,20 +555,55 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     return result;
   }
 
-  // long hair: a curtain of hair cubes from the back of the head down to the shoulder blades
-  addLongHair(byJoint, worldOf, ctx, V) {
+  // Hair volume around the skull: a shell of the given thickness that follows the head
+  // and then hangs straight down to the style's length. The face stays free.
+  //   short: 1.2 cm, down to the nape   medium: 2 cm, bob to the chin   long: 2.2 cm, over the shoulders
+  addHair(byJoint, worldOf, ctx, V) {
     const { face, W, s } = ctx;
-    const E = face.eye, c = new THREE.Color(this.body.colors.hair);
-    const hw = worldOf.head, list = (byJoint['head|' + V] ||= []);
-    const bottom = W.shoulderL[1] - 0.12 * s, top = E.y;
-    for (let y = top; y > bottom; y -= V) {
-      const t = (top - y) / (top - bottom);
-      const half = (0.07 + 0.03 * t) * s;
-      const zBack = E.z - (0.105 + 0.02 * t) * s;
-      for (let x = -half; x <= half; x += V) {
-        for (let dz = 0; dz < 0.02 * s; dz += V) {
-          list.push({ p: [x - hw[0], y - hw[1], zBack - dz - hw[2]], c: c.clone().multiplyScalar(0.9 + 0.1 * hash(Math.round(x / V), Math.round(y / V), 7, 1)), n: new THREE.Vector3(0, 0, -1) });
-        }
+    const look = this.body.look.hair, E = face.eye;
+    const style = look.style;
+    const thick = { short: 0.008, medium: 0.02, long: 0.022 }[style] * s * (0.8 + 0.2 * (look.width || 1));
+    const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
+    const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
+    const R = [0.083 * s, 0.108 * s + top, 0.103 * s];   // skull radii (just under the hair)
+    const bottom = style === 'short' ? E.y - 0.045 * s : style === 'medium' ? face.chinY - 0.005 * s : W.shoulderL[1] - 0.14 * s;
+    const col = new THREE.Color(this.body.colors.hair);
+    // radial distance (1 = skull surface); below the center the shape hangs straight down
+    const rad = (x, y, z) => {
+      const dy = Math.max(0, y - C[1]);
+      return Math.hypot(x / R[0], dy / R[1], (z - C[2]) / R[2]);
+    };
+    const inHair = (x, y, z) => {
+      if (y < bottom || y > C[1] + R[1] + thick * 1.5) return false;
+      const r = rad(x, y, z), rOut = 1 + thick / R[0];
+      if (r < 1 || r > rOut) return false;
+      const frontZ = z - C[2];
+      // face opening: no hair in front of the face below the hair line (unless fringe)
+      // natural hair line: a little higher at the temples
+      const hairLine = look.bangs ? E.y + 0.012 * s : E.y + 0.058 * s + 0.012 * s * Math.min(1, Math.abs(x) / (0.06 * s));
+      if (frontZ > 0.03 * s && y < hairLine) return false;
+      // sides in front of the ears only above the temple for short hair
+      // short: sides only above the ears, back down to the nape
+      if (style === 'short' && frontZ > -0.03 * s && y < E.y + 0.03 * s) return false;
+      if (style === 'short' && Math.abs(x) > 0.05 * s && y < E.y + 0.012 * s) return false;
+      if (style === 'short' && y < E.y - 0.03 * s + 0.045 * s * Math.min(1, Math.abs(x) / (0.07 * s))) return false; // tapered nape
+      // below the skull center the hair is only behind / beside the head (not under the chin)
+      if (y < C[1] && frontZ > 0.02 * s) return false;
+      return true;
+    };
+    const hw = worldOf.head, key = 'head|' + V;
+    const list = (byJoint[key] ||= []);
+    const x0 = -R[0] - thick - V, x1 = -x0, z0 = C[2] - R[2] - thick - V, z1 = C[2] + R[2] + thick + V;
+    const snap = (v) => (Math.floor(v / V) + 0.5) * V;
+    for (let y = snap(bottom); y < C[1] + R[1] + thick * 1.5; y += V) {
+      for (let x = snap(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
+        if (!inHair(x, y, z)) continue;
+        // only the outer shell of the hair volume
+        if (inHair(x + V, y, z) && inHair(x - V, y, z) && inHair(x, y + V, z) && inHair(x, y - V, z) && inHair(x, y, z + V) && inHair(x, y, z - V)) continue;
+        const n = new THREE.Vector3(x / R[0], Math.max(0, y - C[1]) / R[1], (z - C[2]) / R[2]).normalize();
+        // strands: slight vertical streaks
+        const streak = 0.86 + 0.14 * hash(Math.round(x / (V * 1.5)), Math.round(z / (V * 1.5)), 11, 2);
+        list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: col.clone().multiplyScalar(streak), n });
       }
     }
   }
