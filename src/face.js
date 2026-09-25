@@ -56,6 +56,23 @@ function sample(data, p, r, keep) {
   return (Math.round(R / n) << 16) | (Math.round(G / n) << 8) | Math.round(B / n);
 }
 
+// Mean color of the darkest `share` of the pixels around several points
+function darkest(data, pts, r, share) {
+  const px = [];
+  for (const p of pts) for (let y = Math.round(p.y - r); y <= p.y + r; y++) for (let x = Math.round(p.x - r); x <= p.x + r; x++) {
+    if (x < 0 || y < 0 || x >= CROP || y >= CROP || (x - p.x) ** 2 + (y - p.y) ** 2 > r * r) continue;
+    const i = (y * CROP + x) * 4;
+    px.push([data[i], data[i + 1], data[i + 2]]);
+  }
+  if (!px.length) return null;
+  px.sort((a, b) => a[0] + a[1] + a[2] - (b[0] + b[1] + b[2]));
+  const n = Math.max(1, Math.round(px.length * share));
+  let R = 0, G = 0, B = 0;
+  for (let k = 0; k < n; k++) { R += px[k][0]; G += px[k][1]; B += px[k][2]; }
+  return (Math.round(R / n) << 16) | (Math.round(G / n) << 8) | Math.round(B / n);
+}
+const rgbScale = (c, k) => (Math.round(((c >> 16) & 255) * k) << 16) | (Math.round(((c >> 8) & 255) * k) << 8) | Math.round((c & 255) * k);
+
 // Head square from the body pose (nose, ears, shoulders), in image pixels
 function headBox(pose, w, h) {
   const P = (i) => ({ x: pose[i].x * w, y: pose[i].y * h });
@@ -84,6 +101,26 @@ export function faceRatios(L) {
     chin: dist(L[17], L[152]) / fh,
   };
 }
+// Where brows and lips sit, for painting them onto the avatar: x in units of half the eye
+// distance (iris to iris), y in eye-to-chin units above the eyes (negative = below).
+// Both face sides are averaged (the avatar is painted symmetric; photos are rarely perfectly frontal).
+const BROW_TOP = [[70, 300], [63, 293], [105, 334], [66, 296], [107, 336]]; // outer -> inner
+const BROW_BOT = [[46, 276], [53, 283], [52, 282], [65, 295], [55, 285]];
+export function faceFeatures(L) {
+  const c = mid(L[468], L[473]), half = dist(L[468], L[473]) / 2, ec = L[152].y - c.y;
+  const u = (p) => Math.abs(p.x - c.x) / half, v = (p) => (c.y - p.y) / ec;
+  const avg = ([a, b], f) => (f(L[a]) + f(L[b])) / 2;
+  return {
+    brow: BROW_TOP.map((t, i) => ({ u: (avg(t, u) + avg(BROW_BOT[i], u)) / 2, top: avg(t, v), bot: avg(BROW_BOT[i], v) })),
+    mouth: {
+      corner: avg([61, 291], u),
+      line: (v(L[13]) + v(L[14])) / 2,
+      top: v(L[0]), bottom: v(L[17]),
+      peak: avg([37, 267], u), // cupid's bow peaks
+    },
+  };
+}
+
 // average face (ratio 1) and allowed range of the normalized measures
 export const RATIO_AVG = { faceLong: 1.18, jaw: 0.8, eyeSpacing: 0.235, eyeSize: 0.2, eyeOpen: 0.3, noseWidth: 0.25,
   noseLength: 0.33, mouthWidth: 0.36, lipUpper: 0.045, lipLower: 0.055, chin: 0.21 };
@@ -169,7 +206,13 @@ export async function analyzeFace(image, pose) {
   const notGlint = ([R, G, B]) => R + G + B < 600 && R + G + B > 40; // skip reflections + pupil
   const eyeCol = mixColors(sample(pixels, L[468], irisR, notGlint), sample(pixels, L[473], irisR, notGlint)) ?? 0x5a4030;
   const lip = mixColors(sample(pixels, mid(L[0], L[13]), r * 0.6), sample(pixels, mid(L[14], L[17]), r * 0.6)) ?? 0xc07f70;
-  const brow = mixColors(sample(pixels, L[105], r * 0.6), sample(pixels, L[334], r * 0.6)) ?? 0x3a2a20;
+  // brows: darkest 35 % of the pixels along both brows (a single spot mixes brow + skin);
+  // always at least a bit darker than the skin, so the brows stay readable on the figure
+  const browPts = BROW_TOP.flatMap((t, i) => [0, 1].map((k) => mid(L[t[k]], L[BROW_BOT[i][k]])));
+  const browR = Math.max(1.5, dist(L[105], L[52]) * 0.45);
+  let brow = darkest(pixels, browPts, browR, 0.35) ?? 0x3a2a20;
+  const bl = lum(brow), sl = lum(skinMix);
+  if (bl > sl * 0.8) brow = rgbScale(brow, (sl * 0.8) / bl);
 
   // hair color = average of hair pixels (without bright highlights)
   let HR = 0, HG = 0, HB = 0, hn = 0, minY = CROP, sideBottom = 0, bangs = 0, bandN = 0, maxW = 0;
@@ -233,6 +276,7 @@ export async function analyzeFace(image, pose) {
   return {
     measures: m,
     ratios,
+    features: faceFeatures(L),
     wb, fixWB,
     colors: { skin: fixWB(skinMix), eye: fixWB(eyeCol), lip: fixWB(lip), brow: fixWB(brow), hair: fixWB(hairColor), beard: fixWB(mixColors(brow, hairColor)) },
     hair: hairInfo,

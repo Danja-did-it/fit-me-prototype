@@ -363,6 +363,22 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       if (this.vertJoint[v] === 'head' && pos[v * 3 + 2] > eye.z - 0.01 && Math.abs(pos[v * 3]) < 0.02) chinY = Math.min(chinY, pos[v * 3 + 1]);
     }
     const face = { eye, chinY, mouthY: chinY + 0.39 * (eye.y - chinY), noseY: chinY + 0.64 * (eye.y - chinY), eyeL: W.eyeL, eyeR: W.eyeR };
+    // brows + lips where the scanned person has them (face.js faceFeatures: x in half eye
+    // distances, y in eye-to-chin units above the eyes), else the default shapes below
+    const FF = this.body.features;
+    if (FF) {
+      const toY = (v) => eye.y + v * (eye.y - chinY);
+      const b = [...FF.brow].sort((p, q) => p.u - q.u);
+      face.brow = { u0: b[0].u, u1: b[b.length - 1].u, at: (u) => { // top / bottom y of the brow at u
+        let i = 0;
+        while (i < b.length - 2 && u > b[i + 1].u) i++;
+        const t = Math.min(1, Math.max(0, (u - b[i].u) / (b[i + 1].u - b[i].u || 1)));
+        return [toY(b[i].top + (b[i + 1].top - b[i].top) * t), toY(b[i].bot + (b[i + 1].bot - b[i].bot) * t)];
+      } };
+      const M = FF.mouth;
+      face.mouthY = toY(M.line);
+      face.lips = { corner: M.corner * eye.x, peak: M.peak * eye.x, top: toY(M.top) - face.mouthY, bottom: face.mouthY - toY(M.bottom) };
+    }
     const s = this.body.height / 1.75;
     const ctx = { W, L, face, s, waistY: W.hipL[1] + 0.1 * s };
     // hair line from the hair scan (center + temples, in eye-to-chin units), else a natural default
@@ -526,17 +542,32 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
           color = new THREE.Color(c.brow).lerp(new THREE.Color(0x201510), 0.5).getHex(); // lash line
         }
       }
-      // eyebrows: thin arch above each eye
+      // eyebrows: scanned shape (thickness, arch, start + end), else a thin default arch
       const ex = ax - E.x;
-      const arch = E.y + 0.019 * s + 0.003 * s * Math.cos((ex / (0.02 * s)) * 1.2);
-      if (jn === 'head' && front && z > E.z && Math.abs(ex) < 0.019 * s &&
-          Math.abs(y - arch) < 0.0026 * s * (1 - 0.5 * Math.max(0, ex / (0.019 * s)))) {
-        color = new THREE.Color(c.brow).lerp(new THREE.Color(c.skin), 0.25).getHex();
+      const browColor = () => new THREE.Color(c.brow).lerp(new THREE.Color(c.skin), 0.25).getHex();
+      if (face.brow) {
+        const u = ax / E.x, [bt, bb] = face.brow.at(u);
+        const pad = 0.0019 * s; // at least ~2 cubes thick at the thin tail
+        if (jn === 'head' && n.z > 0.05 && z > E.z - 0.006 * s && u > face.brow.u0 && u < face.brow.u1 &&
+            y < Math.max(bt, bb + pad) && y > Math.min(bb, bt - pad)) color = browColor();
+      } else {
+        const arch = E.y + 0.019 * s + 0.003 * s * Math.cos((ex / (0.02 * s)) * 1.2);
+        if (jn === 'head' && front && z > E.z && Math.abs(ex) < 0.019 * s &&
+            Math.abs(y - arch) < 0.0026 * s * (1 - 0.5 * Math.max(0, ex / (0.019 * s)))) color = browColor();
       }
-      // lips (lens shape around the mouth line)
-      const mw = 0.024 * s * (this.body.face?.mouthWidth || 1);
+      // lips: scanned corners, lip heights and cupid's bow; else a default lens shape
       const dy = y - face.mouthY;
-      const onLips = jn === 'head' && front && z > E.z - 0.005 && Math.abs(dy) < 0.009 * s && ax < mw * (1 - 0.5 * (dy / (0.011 * s)) ** 2);
+      let onLips;
+      if (face.lips) {
+        const Lp = face.lips, t = ax / Lp.corner;
+        // upper lip: highest at the cupid's bow peaks, small dip in the middle; lower lip: round
+        const up = Lp.top * Math.sqrt(Math.max(0, 1 - t * t)) * (ax < Lp.peak ? 0.88 + 0.12 * (ax / Lp.peak) : 1);
+        const low = Lp.bottom * Math.pow(Math.max(0, 1 - t * t), 0.6);
+        onLips = jn === 'head' && front && z > E.z - 0.005 && t < 1 && dy < Math.max(up, 0.0012 * s) && -dy < Math.max(low, 0.0012 * s);
+      } else {
+        const mw = 0.024 * s * (this.body.face?.mouthWidth || 1);
+        onLips = jn === 'head' && front && z > E.z - 0.005 && Math.abs(dy) < 0.009 * s && ax < mw * (1 - 0.5 * (dy / (0.011 * s)) ** 2);
+      }
       if (onLips) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
       // facial hair
       const lowFace = jn === 'head' && z > E.z - 0.075 * s && y < face.mouthY + 0.004 * s && ax < 0.075 * s;

@@ -189,3 +189,8 @@
   assumed, upper lip 0.032 vs 0.045); lip volume and chin width hardly move their landmarks -> lip height and chin bones
   targets; lips weighted 0.3 (only a few pixels tall). Eyes may hardly shrink (-0.35), else lids close to slits.
   Test with known faces: ratio error 4.6-5.1 % -> 0.1-1.1 %, target error 0.19-0.44 -> 0.04-0.16. Sample photo 6.5 -> 4.4 %.
+- Loop round 6 (v15): brows + lips from the face scan instead of fixed default shapes. face.js faceFeatures() stores
+  brow top/bottom edges (5 points outer -> inner) and mouth (corners, line, upper/lower lip edge, cupid's bow peaks)
+  in half-eye-distance / eye-chin units, both sides averaged; avatar.js paints them there (brow ridge normals allowed
+  down to n.z 0.05). Brow color = mean of the darkest 35 % of the pixels along both brows (a single spot mixed brow and
+  skin: sample photo brow 94806d vs skin 988473), always <= 80 % of the skin brightness -> brows readable.

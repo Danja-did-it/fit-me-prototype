@@ -190,6 +190,7 @@ export function bodyFromScans(scans, height) {
   const f = scans.face;
   if (f) {
     body.face = f.measures;
+    body.features = f.features; // brow + lip positions for painting
     Object.assign(body.look, { hair: f.hair, beard: f.beard, mustache: f.mustache });
     body.colors = { ...body.colors, ...f.colors };
   }
