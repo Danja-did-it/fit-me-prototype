@@ -239,6 +239,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
     const add = (name, v) => { local[name] = (local[name] || 0) + v; };
     for (const [n, v] of Object.entries(f.local)) add(n, v);
     for (const [n, v] of Object.entries(f.face || {})) add(n, v);
+
     // muscle groups: global slider + group slider, fiber mix decides the growth
     const gains = {};
     for (const g of GROUP_IDS) {
@@ -346,7 +347,11 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
         return { min: mn.map((x) => x - 0.03), max: mx.map((x) => x + 0.03) };
       };
       const isHead = (v) => this.vertDetail[v] && (this.vertJoint[v] === 'head' || this.vertJoint[v] === 'neck');
-      for (const test of [isHead, (v) => this.vertHand[v] && this.vertJoint[v] === 'elbowL', (v) => this.vertHand[v] && this.vertJoint[v] === 'elbowR']) {
+      // head + neck with the finest cubes (1/3 of the body size: 0.33 cm at 1 cm) for the face,
+      // hands with half-size cubes
+      const Vh = V / 3;
+      passes.push([Vh, voxelize(pos, F, Vh, boxOf(isHead), (t) => triDetail[t] && isHead(F[t * 3]))]);
+      for (const test of [(v) => this.vertHand[v] && this.vertJoint[v] === 'elbowL', (v) => this.vertHand[v] && this.vertJoint[v] === 'elbowR']) {
         passes.push([Vd, voxelize(pos, F, Vd, boxOf(test), (t) => triDetail[t] && test(F[t * 3]))]);
       }
     } else passes.push([V, voxelize(pos, F, V)]);
@@ -473,7 +478,7 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       return null;
     }
 
-    let color = c.skin, special = null;
+    let color = c.skin, special = null, eyeDecal = false;
     const ax = Math.abs(x), front = n.z > 0.25;
     if (isEye) {
       // eyeball: direction from the eye center -> pupil / iris / white
@@ -492,6 +497,27 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
       if (style !== 'none' && jn === 'head' && (hairTop || hairBack || hairSide || bangs)) {
         color = c.hair; // scalp under the hair volume (see addHair)
+      }
+      // Eyes as a clean almond-shaped drawing on the face surface (the real eye opening is only
+      // ~2 cubes high at 0.5 cm, so the eyeball behind it would barely show): white, iris in the
+      // scanned eye color, pupil, a small catch light, and a fine lash line along the upper edge.
+      const ec = x > 0 ? face.eyeL : face.eyeR;
+      const FM = this.body.face || {}, es = FM.eyeSize || 1, eo = FM.eyeOpen || 1;
+      const edx = (x - ec[0]) * (x > 0 ? 1 : -1), edy = y - ec[1] - 0.001 * s;
+      const ea = 0.0162 * s * es, eb = 0.0072 * s * es * Math.min(1.25, Math.max(0.8, eo)); // ~12 % larger than real: playful, readable
+      const tilt = edy - 0.08 * edx; // outer corner slightly higher
+      const eShape = (edx / ea) ** 2 + (tilt / (eb * (1 - 0.25 * Math.max(0, -edx / ea)))) ** 2;
+      if (jn === 'head' && z > ec[2] - 0.004 && n.z > 0.2) {
+        if (eShape < 1) {
+          eyeDecal = true; // no crease shading on the eyes (they would look grey)
+          const r = Math.hypot(edx, edy);
+          if (Math.hypot(edx - 0.0022 * s, edy - 0.0022 * s) < 0.0013 * s) special = DETAIL.eyeWhite; // catch light
+          else if (r < 0.0026 * s) special = DETAIL.pupil;
+          else if (r < 0.0064 * s) { color = c.eye; special = null; }
+          else special = DETAIL.eyeWhite;
+        } else if (eShape < 1.7 && tilt > 0) {
+          color = new THREE.Color(c.brow).lerp(new THREE.Color(0x201510), 0.5).getHex(); // lash line
+        }
       }
       // eyebrows: thin arch above each eye
       const ex = ax - E.x;
@@ -558,7 +584,8 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
       const g = tissue.group && this.gains?.[tissue.group];
       if (g && Math.abs(g) > 0.02) out.lerp(g > 0 ? TINT.muscle : TINT.less, Math.min(0.3, Math.abs(g) * 0.25));
     }
-    out.multiplyScalar(shade * jitter);
+    // eyes sit in the (darker) eye socket: lift them a little so the look stays lively
+    out.multiplyScalar(eyeDecal ? (special === DETAIL.eyeWhite ? 1.7 : special === DETAIL.pupil ? 1 : 1.35) : shade * jitter);
     return result;
   }
 

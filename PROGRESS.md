@@ -173,3 +173,8 @@
      neutral white lights, exposure 1.25: d9b8a3 -> d3b099 (S 0.40), c68e6e -> c08563, 8d5a3b -> 87502a, hue exact.
 - Loop round 2: sleeveless tops frayed at the shoulder (bone ownership interleaves there). Arm hole now by position:
   above the armpit, skin outside the strap line (70 % of shoulder x), plus a wider scoop neck -> clean straps.
+- Loop round 3 (v12): eyes looked like slits (lid gap only ~2 cubes, eyeball hidden behind lid cubes).
+  First try (open lids via target + painted lash line) made a dark smudge -> reverted. Now: eyes as a clean almond-shaped
+  drawing on the face surface (white, iris in scanned color, pupil, catch light, lash line), 12 % larger than real
+  (playful, readable), no crease shading + lifted brightness in the eye socket. Head + neck now 0.33 cm cubes
+  (hands 0.5 cm, body 1 cm): 42.5k cubes, 186 ms.
