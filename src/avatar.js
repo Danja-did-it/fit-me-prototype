@@ -530,6 +530,13 @@ worldPosition = modelMatrix * (cubeSkin() * worldPosition);`);
         const sleeveLen = o.sleeves === 'long' ? 9 : o.sleeves === 'short' ? 0.45 * L.upperArm : -1;
         color = shirt && along < sleeveLen && !hand ? c.shirt : c.skin;
       }
+      // sleeveless top: the arm hole is defined by position, not by bone (bones interleave at the
+      // shoulder and would fray the edge): above the armpit, everything outside the strap line is skin
+      if (shirt && o.sleeves === 'none' && (torso || onArm)) {
+        const armpitY = W.shoulderL[1] - 0.11 * s, strapX = Math.abs(W.shoulderL[0]) * 0.7;
+        if (y > armpitY) color = ax < strapX - 0.015 * s * Math.max(0, (y - armpitY) / (0.11 * s)) ? c.shirt : c.skin;
+        if (y > W.neck[1] - 0.07 * s && Math.hypot(x - W.neck[0], (z - W.neck[2]) * 0.7) < 0.085 * s && z > W.neck[2] - 0.02) color = c.skin; // wider scoop neck
+      }
       if (/^knee/.test(jn) && o.shoes && y < W.ankleL[1] + 0.05 * s && color === c.skin) special = DETAIL.sock;
       if (/^ankle/.test(jn)) {
         if (o.shoes) { color = c.shoe; if (y < 0.018 * s) special = DETAIL.sole; }

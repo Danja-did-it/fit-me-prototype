@@ -171,3 +171,5 @@
      both eyes must agree (r/g, b/g within 0.08), target = natural warm eye white, applied half-way, capped +-10 %.
   2. Rendering desaturated light skin (ACES + cool fill light): d9b8a3 rendered S 0.42 -> 0.27. Now NeutralToneMapping,
      neutral white lights, exposure 1.25: d9b8a3 -> d3b099 (S 0.40), c68e6e -> c08563, 8d5a3b -> 87502a, hue exact.
+- Loop round 2: sleeveless tops frayed at the shoulder (bone ownership interleaves there). Arm hole now by position:
+  above the armpit, skin outside the strap line (70 % of shoulder x), plus a wider scoop neck -> clean straps.
