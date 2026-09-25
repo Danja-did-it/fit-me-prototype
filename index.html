@@ -37,12 +37,18 @@
       <div class="row">
         <button id="camBtn">Kamera starten</button>
         <button id="snapFront" disabled>Front aufnehmen</button>
+        <button id="snapBack" disabled>Rücken aufnehmen</button>
         <button id="snapSide" disabled>Seite aufnehmen</button>
         <button id="flipCam" hidden>Kamera wechseln</button>
       </div>
       <div class="row">
-        <label class="btn">Front-Foto wählen<input type="file" accept="image/*" id="fileFront" hidden></label>
-        <label class="btn">Seiten-Foto wählen<input type="file" accept="image/*" id="fileSide" hidden></label>
+        <label class="btn">Front-Fotos<input type="file" accept="image/*" id="fileFront" multiple hidden></label>
+        <label class="btn">Rücken-Fotos<input type="file" accept="image/*" id="fileBack" multiple hidden></label>
+        <label class="btn">Seiten-Fotos<input type="file" accept="image/*" id="fileSide" multiple hidden></label>
+      </div>
+      <div class="row">
+        <span class="hint" id="scanCount">Noch keine Aufnahmen. Mehr Aufnahmen = genauere Maße (Median).</span>
+        <button id="clearScans">Aufnahmen löschen</button>
       </div>
       <div class="scans">
         <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
@@ -58,8 +64,14 @@
       <label class="field">Körpergröße
         <input type="number" id="height" value="175" min="120" max="220" step="1" inputmode="numeric"> cm
       </label>
-      <p class="hint">Deine echte Größe ist der Maßstab für alle Maße aus dem Foto.
-        Front-Foto: Breiten + Längen. Seiten-Foto: Tiefe von Brust und Bauch.</p>
+      <div class="row">
+        <label class="field">Geschlecht
+          <select id="gender"><option value="1" selected>Mann</option><option value="0">Frau</option><option value="0.5">Divers</option></select>
+        </label>
+        <label class="field">Alter <input type="number" id="age" value="30" min="12" max="90" step="1" inputmode="numeric"></label>
+      </div>
+      <p class="hint">Deine echte Größe ist der Maßstab. Front/Rücken: Breiten + Längen, Seite: Tiefen.
+        Das Körpermodell wird an alle Aufnahmen angepasst – Tabelle: Foto → Modell.</p>
       <table id="measures"></table>
     </section>
 

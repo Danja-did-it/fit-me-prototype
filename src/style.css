@@ -43,7 +43,8 @@ label.field input { width: 72px; background: #0f1115; color: var(--text); border
   border-radius: 6px; padding: 6px 8px; font: inherit; }
 #measures { width: 100%; border-collapse: collapse; font-size: 13px; }
 #measures td { padding: 3px 0; border-bottom: 1px solid var(--line); }
-#measures td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+#measures td + td { text-align: right; font-variant-numeric: tabular-nums; }
+#measures tr.head td { color: var(--muted); font-size: 11px; }
 #measures .src { color: var(--muted); font-size: 11px; }
 
 label.slider { display: block; margin-bottom: 10px; }

@@ -92,6 +92,7 @@ export class Animator {
   update(dt) {
     this.time += dt;
     const J = this.avatar.joints;
+    if (!J.hips) return; // body data still loading
     const target = MODES[this.mode](this.time);
     // blend toward target: fast enough to follow, smooth on mode changes
     const k = 1 - Math.exp(-dt * 12);

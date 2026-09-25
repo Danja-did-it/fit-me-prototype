@@ -41,6 +41,16 @@ function runWidth(mask, y, cx, minX = 0, maxX = mask.width - 1) {
   return Math.max(0, Math.min(r, maxX) - Math.max(l, minX) + 1);
 }
 
+// narrowest person run between two heights (for the neck)
+function neckMin(mask, y0, y1, cx, lim) {
+  let m = Infinity;
+  for (let t = 0.3; t <= 0.85; t += 0.05) {
+    const w = runWidth(mask, y0 + t * (y1 - y0), cx, cx - lim, cx + lim);
+    if (w > 0) m = Math.min(m, w);
+  }
+  return m === Infinity ? 0 : m;
+}
+
 // Landmark in mask pixel coordinates
 const px = (scan, i) => ({ x: scan.landmarks[i].x * scan.mask.width, y: scan.landmarks[i].y * scan.mask.height });
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
@@ -98,8 +108,9 @@ export function measureFront(scan, height) {
   const s = height / 1.75;
   return {
     height,
-    // neck: just below the chin (60 % from shoulders up to the mouth), never wider than the jaw
-    neckWidth: clamp(runWidth(mask, sh.y - 0.6 * (sh.y - mouthY), px(scan, 0).x, px(scan, 0).x - 0.08 / k, px(scan, 0).x + 0.08 / k) * k, 0.06 * height, 0.085 * height),
+    // neck: narrowest row between 30 % and 85 % of the way from the shoulders to the mouth
+    // (same definition as on the model, fit.js)
+    neckWidth: clamp(neckMin(mask, sh.y, mouthY, px(scan, 0).x, 0.08 / k) * k, 0.06 * height, 0.085 * height),
     upperArmWidth: clamp(avg2((i) => limb(11 + i, 13 + i, 0.55)), 0.045 * height, 0.075 * height),
     forearmWidth: clamp(avg2((i) => limb(13 + i, 15 + i, 0.3)), 0.038 * height, 0.058 * height),
     calfWidth: clamp(avg2((i) => limb(25 + i, 27 + i, 0.3, true)), 0.05 * height, 0.078 * height),
@@ -127,31 +138,40 @@ export function measureSide(scan, height) {
   };
 }
 
-// Combine: defaults <- front <- side <- face. Missing photos keep default proportions.
+// Combine all photos: defaults <- median(front + back) <- median(sides) <- face.
+const median = (list) => { const a = [...list].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+function medianOf(measures) {
+  const out = {};
+  for (const key of Object.keys(measures[0] || {})) out[key] = median(measures.map((m) => m[key]));
+  return out;
+}
+
 export function bodyFromScans(scans, height) {
   const s = height / 1.75;
   const body = { ...DEFAULT_BODY };
   // scale all default widths/lengths (numbers only) to the user's height
   for (const key of Object.keys(body)) if (key !== 'height' && typeof body[key] === 'number') body[key] *= s;
   body.height = height;
-  if (scans.front) {
-    Object.assign(body, measureFront(scans.front, height));
-    if (scans.front.colors) body.colors = { ...body.colors, ...scans.front.colors };
+  if (scans.front.length) {
+    Object.assign(body, medianOf(scans.front.map((sc) => measureFront(sc, height))));
+    const first = scans.front.find((sc) => sc.view === 'front') || scans.front[0];
+    if (first.colors) body.colors = { ...body.colors, ...first.colors };
   }
-  if (scans.side) Object.assign(body, measureSide(scans.side, height));
+  if (scans.side.length) Object.assign(body, medianOf(scans.side.map((sc) => measureSide(sc, height))));
+  body.height = height;
   // human proportions: waist never wider than the shoulders, hips close to them
   body.waistWidth = Math.min(body.waistWidth, body.shoulderWidth * 0.9);
   body.hipWidth = Math.min(body.hipWidth, body.shoulderWidth * 1.1);
   body.thighWidth = Math.min(body.thighWidth, body.hipWidth * 0.55);
-  const f = scans.front?.face;
   body.look = { ...body.look };
+  const f = scans.face;
   if (f) {
     body.face = f.measures;
     Object.assign(body.look, { hair: f.hair, beard: f.beard, mustache: f.mustache });
     body.colors = { ...body.colors, ...f.colors };
   }
-  if (scans.front?.outfit) {
-    const o = scans.front.outfit;
+  if (scans.outfit) {
+    const o = scans.outfit;
     body.look.outfit = { top: o.top, sleeves: o.sleeves, bottoms: o.bottoms, shoes: o.shoes };
   }
   return body;

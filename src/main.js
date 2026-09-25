@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar } from './avatar.js';
 import { bodyFromScans } from './measure.js';
+import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS } from './fit.js';
 import { Animator } from './anim.js';
 import { GROUPS } from './anatomy.js';
 // scan.js (MediaPipe, large) is loaded only when the user starts a scan -> faster first load
@@ -83,6 +84,7 @@ resize();
 renderer.setAnimationLoop(() => {
   const now = performance.now();
   animator.update(Math.min((now - lastTime) / 1000, 0.1)); // seconds; capped after tab switches
+  avatar.updateSkin(); // joint movement -> GPU skinning of the cubes
   lastTime = now;
   controls.update();
   renderer.render(scene, camera);
@@ -95,54 +97,72 @@ const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
 const setStatus = (t) => (statusEl.textContent = t);
 
-// Latest scan results, used to shape the avatar
-export const scans = { front: null, side: null };
-const tipsByView = { front: [], side: [] };
+// All scans: several photos per view. front = front + back photos (widths, lengths),
+// side = left + right photos (depths). Every measurement uses the median of all photos.
+export const scans = { front: [], side: [], face: null, outfit: null };
+const tips = {};
 window.scans = scans;
+const VIEW_NAMES = { front: 'Front', back: 'Rücken', side: 'Seite' };
 
 async function runScan(view, image) {
-  setStatus('Analysiere ' + (view === 'front' ? 'Front' : 'Seite') + ' … (erstes Mal lädt Modell)');
+  setStatus('Analysiere ' + VIEW_NAMES[view] + ' … (erstes Mal lädt die Modelle)');
   try {
-    const { analyze, drawScan } = await scanModule();
+    const { analyze, drawScan, scanQuality } = await scanModule();
     const scan = await analyze(image);
-    drawScan($(view === 'front' ? 'prevFront' : 'prevSide'), image, scan);
+    drawScan($(view === 'side' ? 'prevSide' : 'prevFront'), image, scan);
     if (!scan) return setStatus('Keine Person erkannt. Ganzer Körper im Bild?');
-    scans[view] = scan;
+    scan.view = view;
+    (view === 'side' ? scans.side : scans.front).push(scan);
     let faceText = '';
     if (view === 'front') {
-      // face + hair on the same photo: shape of the face, real colors, hairstyle, beard
-      setStatus('Analysiere Gesicht …');
-      const { analyzeFace, drawFace } = await import('./face.js');
-      try {
-        scan.face = await analyzeFace(image, scan.landmarks);
-      } catch (e) { console.warn('face analysis failed', e); scan.face = null; }
-      if (scan.face) drawFace($('prevFace'), scan.face);
-      manual = {}; // a new scan replaces manual changes
-      faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
+      if (!scans.outfit && scan.outfit) scans.outfit = scan.outfit;
+      if (!scans.face) {
+        // face + hair from the first front photo with a visible face
+        setStatus('Analysiere Gesicht …');
+        const { analyzeFace, drawFace } = await import('./face.js');
+        try { scan.face = await analyzeFace(image, scan.landmarks); } catch (e) { console.warn('face analysis failed', e); }
+        if (scan.face) { scans.face = scan.face; drawFace($('prevFace'), scan.face); manual = {}; }
+        faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
+      }
     }
     // tips when the photo is not ideal (arms at the body, not upright, clothes ...)
-    const { scanQuality } = await scanModule();
-    tipsByView[view] = scanQuality(scan, view);
-    $('tips').innerHTML = [...tipsByView.front, ...tipsByView.side].map((t) => `<li>${t}</li>`).join('');
-    setStatus((view === 'front' ? 'Front' : 'Seite') + ' erkannt ✓' + faceText + ' – Avatar angepasst');
+    tips[view] = scanQuality(scan, view === 'back' ? 'front' : view);
+    $('tips').innerHTML = [...new Set(Object.values(tips).flat())].map((t) => `<li>${t}</li>`).join('');
+    setStatus(VIEW_NAMES[view] + ' erkannt ✓' + faceText + ' – Körpermodell wird angepasst …');
+    await new Promise((r) => setTimeout(r, 30)); // let the status show before the fit
     applyScans();
+    setStatus(VIEW_NAMES[view] + ' erkannt ✓' + faceText + ' – Avatar angepasst');
   } catch (e) {
     console.error(e);
     setStatus('Fehler bei der Analyse: ' + e.message);
   }
 }
 
-// Photo files
-for (const view of ['front', 'side']) {
-  const input = $(view === 'front' ? 'fileFront' : 'fileSide');
+function updateScanCount() {
+  const nb = scans.front.filter((s) => s.view === 'back').length, nf = scans.front.length - nb, ns = scans.side.length;
+  $('scanCount').textContent = nf + nb + ns
+    ? `Aufnahmen: ${nf}× Front, ${nb}× Rücken, ${ns}× Seite – Maße = Median aller Aufnahmen.`
+    : 'Noch keine Aufnahmen. Mehr Aufnahmen = genauere Maße (Median).';
+}
+
+// Photo files (several at once)
+for (const [view, id] of [['front', 'fileFront'], ['back', 'fileBack'], ['side', 'fileSide']]) {
+  const input = $(id);
   input.addEventListener('change', async () => {
-    const file = input.files[0];
-    if (!file) return;
     const { loadImageFile } = await scanModule();
-    runScan(view, await loadImageFile(file));
-    input.value = ''; // allow picking the same file again
+    for (const file of [...input.files]) await runScan(view, await loadImageFile(file));
+    input.value = ''; // allow picking the same files again
+    updateScanCount();
   });
 }
+$('clearScans').addEventListener('click', () => {
+  scans.front.length = 0; scans.side.length = 0; scans.face = null; scans.outfit = null;
+  for (const k of Object.keys(tips)) delete tips[k];
+  $('tips').innerHTML = '';
+  updateScanCount();
+  applyScans();
+  setStatus('Aufnahmen gelöscht.');
+});
 
 // Camera with 5 s self-timer so the user can step back
 const video = $('video');
@@ -165,7 +185,7 @@ $('camBtn').addEventListener('click', async () => {
   }
   video.parentElement.hidden = !cameraOn;
   $('camBtn').textContent = cameraOn ? 'Kamera stoppen' : 'Kamera starten';
-  $('snapFront').disabled = $('snapSide').disabled = !cameraOn;
+  $('snapFront').disabled = $('snapBack').disabled = $('snapSide').disabled = !cameraOn;
   $('flipCam').hidden = !cameraOn;
   video.classList.toggle('mirror', facing === 'user'); // selfie preview feels natural mirrored
 });
@@ -192,12 +212,12 @@ async function countdown(seconds) {
   el.textContent = '';
 }
 
-for (const view of ['front', 'side']) {
-  $(view === 'front' ? 'snapFront' : 'snapSide').addEventListener('click', async () => {
-    setStatus(view === 'front' ? 'Frontal zur Kamera stellen …' : 'Seitlich zur Kamera stellen …');
+for (const [view, id, hint] of [['front', 'snapFront', 'Frontal zur Kamera stellen …'], ['back', 'snapBack', 'Rücken zur Kamera drehen …'], ['side', 'snapSide', 'Seitlich zur Kamera stellen …']]) {
+  $(id).addEventListener('click', async () => {
+    setStatus(hint);
     await countdown(5);
     const { captureFrame } = await scanModule();
-    if (cameraOn) runScan(view, captureFrame(video));
+    if (cameraOn) { await runScan(view, captureFrame(video)); updateScanCount(); }
   });
 }
 
@@ -207,22 +227,25 @@ for (const view of ['front', 'side']) {
 const heightInput = $('height');
 
 const LABELS = [
-  ['height', 'Größe', 'eingegeben'],
-  ['shoulderWidth', 'Schulterbreite', 'front'],
-  ['waistWidth', 'Taillenbreite', 'front'],
-  ['hipWidth', 'Hüftbreite', 'front'],
-  ['thighWidth', 'Oberschenkel', 'front'],
-  ['legLength', 'Beinlänge', 'front'],
-  ['armLength', 'Armlänge', 'front'],
-  ['chestDepth', 'Brusttiefe', 'side'],
-  ['bellyDepth', 'Bauchtiefe', 'side'],
+  ['shoulderWidth', 'Schulterbreite'], ['waistWidth', 'Taillenbreite'], ['hipWidth', 'Hüftbreite'],
+  ['thighWidth', 'Oberschenkel'], ['calfWidth', 'Wade'], ['upperArmWidth', 'Oberarm'], ['forearmWidth', 'Unterarm'],
+  ['neckWidth', 'Hals'], ['legLength', 'Beinlänge'], ['armLength', 'Armlänge'],
+  ['chestDepth', 'Brusttiefe', 'side'], ['bellyDepth', 'Bauchtiefe', 'side'],
 ];
+let fitResult = null;
 
+// table: photo value (median, number of photos) -> fitted model
 function showMeasures(body) {
-  $('measures').innerHTML = LABELS.map(([key, label, src]) => {
-    const from = src === 'eingegeben' ? src : scans[src] ? (src === 'front' ? 'Front-Foto' : 'Seiten-Foto') : 'Standard';
-    return `<tr><td>${label} <span class="src">${from}</span></td><td>${Math.round(body[key] * 100)} cm</td></tr>`;
-  }).join('');
+  const cm = (v) => (v > 0 ? (v * 100).toFixed(1) + ' cm' : '–');
+  const model = fitResult?.model;
+  const rows = LABELS.map(([key, label, src]) => {
+    const n = src === 'side' ? scans.side.length : scans.front.length;
+    const photo = n ? `${cm(body[key])} <span class="src">${n}×</span>` : '<span class="src">kein Foto</span>';
+    return `<tr><td>${label}</td><td>${photo}</td><td>${model ? cm(model[key]) : ''}</td></tr>`;
+  });
+  $('measures').innerHTML = `<tr><td>Größe</td><td colspan="2">${cm(body.height)} <span class="src">eingegeben</span></td></tr>` +
+    (model ? '<tr class="head"><td></td><td>Foto</td><td>Modell</td></tr>' : '') + rows.join('') +
+    (fitResult ? `<tr><td colspan="3" class="src">Modell-Abweichung im Mittel ${(fitResult.error * 100).toFixed(1)} % (${Math.round(fitResult.ms)} ms)</td></tr>` : '');
 }
 
 function applyScans() {
@@ -232,11 +255,18 @@ function applyScans() {
   body.look = { ...body.look, ...manual.look, hair: { ...body.look.hair, ...manual.look?.hair }, outfit: { ...body.look.outfit, ...manual.look?.outfit } };
   body.colors = { ...body.colors, ...manual.colors };
   avatar.body = body;
+  avatar.person = { gender: Number($('gender').value), age: Number($('age').value) || 30 };
+  // fit the human model to everything that was measured
+  const keys = [...(scans.front.length ? FRONT_KEYS : []), ...(scans.side.length ? SIDE_KEYS : [])];
+  if (avatar.H && keys.length) fitResult = fitToScan(avatar, body, keys);
+  else { avatar.fit = { weight: 0.5, muscle: 0.5, local: {} }; fitResult = null; }
+  avatar.fit.face = faceTargets(scans.face?.measures); // face shape from the face scan
   rebuild();
   showMeasures(body);
   showLook(body);
 }
 heightInput.addEventListener('change', applyScans);
+for (const id of ['gender', 'age']) $(id).addEventListener('change', applyScans);
 
 // ---------------------------------------------------------------------------
 // Body composition: fat, muscle, training style, per muscle group
@@ -335,7 +365,7 @@ function showLook(body) {
   $('bottoms').value = o.bottoms;
   $('shoes').checked = !!o.shoes;
   for (const [id, key] of Object.entries(COLOR_INPUTS)) $(id).value = hexColor(body.colors[key]);
-  const f = scans.front?.face;
+  const f = scans.face;
   if (f) {
     const pct = (v) => Math.round(v * 100) + ' %';
     const m = f.measures;
@@ -365,3 +395,4 @@ function updateLook() {
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
 applyScans(); // first build (defaults until a photo is scanned)
+avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
