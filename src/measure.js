@@ -137,6 +137,17 @@ export function measureSide(scan, height) {
 
 // Combine all photos: defaults <- median(front + back) <- median(sides) <- face.
 const median = (list) => { const a = [...list].sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+// half the range between the 25 % and 75 % values (robust +- of several photos)
+function spreadOf(measures) {
+  const out = {};
+  if (measures.length < 2) return out;
+  for (const key of Object.keys(measures[0])) {
+    const a = measures.map((m) => m[key]).filter((v) => typeof v === 'number').sort((x, y) => x - y);
+    if (a.length < 2) continue;
+    out[key] = (a[Math.floor(a.length * 0.75)] - a[Math.floor(a.length * 0.25)]) / 2 || Math.abs(a[a.length - 1] - a[0]) / 2;
+  }
+  return out;
+}
 function medianOf(measures) {
   const out = {};
   for (const key of Object.keys(measures[0] || {})) out[key] = median(measures.map((m) => m[key]));
@@ -149,12 +160,21 @@ export function bodyFromScans(scans, height) {
   // scale all default widths/lengths (numbers only) to the user's height
   for (const key of Object.keys(body)) if (key !== 'height' && typeof body[key] === 'number') body[key] *= s;
   body.height = height;
+  body.spread = {};
   if (scans.front.length) {
-    Object.assign(body, medianOf(scans.front.map((sc) => measureFront(sc, height))));
+    const all = scans.front.map((sc) => measureFront(sc, height));
+    Object.assign(body, medianOf(all));
+    Object.assign(body.spread, spreadOf(all));
     const first = scans.front.find((sc) => sc.view === 'front') || scans.front[0];
-    if (first.colors) body.colors = { ...body.colors, ...first.colors };
+    // colors from the photo, white-balanced with the eye whites (face.js)
+    const wb = scans.face?.fixWB || ((c) => c);
+    if (first.colors) for (const [k, c] of Object.entries(first.colors)) body.colors = { ...body.colors, [k]: wb(c) };
   }
-  if (scans.side.length) Object.assign(body, medianOf(scans.side.map((sc) => measureSide(sc, height))));
+  if (scans.side.length) {
+    const all = scans.side.map((sc) => measureSide(sc, height));
+    Object.assign(body, medianOf(all));
+    Object.assign(body.spread, spreadOf(all));
+  }
   body.height = height;
   // dense outline profiles (median over all photos of that view)
   body.profile = {
@@ -175,6 +195,12 @@ export function bodyFromScans(scans, height) {
   if (scans.outfit) {
     const o = scans.outfit;
     body.look.outfit = { top: o.top, sleeves: o.sleeves, bottoms: o.bottoms, shoes: o.shoes };
+    // clothes add fabric + a small air gap to the silhouette: take it off again
+    const off = (keys, cm) => { for (const k of keys) if (body[k]) body[k] = Math.max(0.05, body[k] - cm / 100); };
+    const offP = (keys, cm) => { for (const k of keys) if (body.profile[k]) body.profile[k] = body.profile[k].map((v) => (v ? Math.max(0.05, v - cm / 100) : 0)); };
+    if (o.top === 'shirt') { off(['waistWidth', 'chestDepth', 'bellyDepth'], 1.2); offP(['pTorso', 'pTorsoD'], 1.2); }
+    if (o.sleeves !== 'none' && o.top === 'shirt') off(['upperArmWidth'], 0.6);
+    if (o.bottoms === 'long') { off(['thighWidth', 'calfWidth'], 0.8); offP(['pThigh', 'pCalf', 'pThighD', 'pCalfD'], 0.8); off(['hipWidth'], 0.8); }
   }
   return body;
 }

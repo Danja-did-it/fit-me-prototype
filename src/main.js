@@ -104,7 +104,7 @@ const tips = {};
 window.scans = scans;
 const VIEW_NAMES = { front: 'Front', back: 'Rücken', side: 'Seite' };
 
-async function runScan(view, image) {
+async function runScan(view, image, { apply = true } = {}) {
   setStatus('Analysiere ' + VIEW_NAMES[view] + ' … (erstes Mal lädt die Modelle)');
   try {
     const { analyze, drawScan, scanQuality } = await scanModule();
@@ -128,6 +128,7 @@ async function runScan(view, image) {
     // tips when the photo is not ideal (arms at the body, not upright, clothes ...)
     tips[view] = scanQuality(scan, view === 'back' ? 'front' : view);
     $('tips').innerHTML = [...new Set(Object.values(tips).flat())].map((t) => `<li>${t}</li>`).join('');
+    if (!apply) { setStatus(VIEW_NAMES[view] + ' erkannt ✓' + faceText); return; }
     setStatus(VIEW_NAMES[view] + ' erkannt ✓' + faceText + ' – Körpermodell wird angepasst …');
     await new Promise((r) => setTimeout(r, 30)); // let the status show before the fit
     applyScans();
@@ -203,22 +204,34 @@ $('flipCam').addEventListener('click', async () => {
   video.classList.toggle('mirror', facing === 'user');
 });
 
-async function countdown(seconds) {
-  const el = $('countdown');
-  for (let s = seconds; s > 0; s--) {
-    el.textContent = s;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  el.textContent = '';
-}
 
-for (const [view, id, hint] of [['front', 'snapFront', 'Frontal zur Kamera stellen …'], ['back', 'snapBack', 'Rücken zur Kamera drehen …'], ['side', 'snapSide', 'Seitlich zur Kamera stellen …']]) {
-  $(id).addEventListener('click', async () => {
-    setStatus(hint);
-    await countdown(5);
-    const { captureFrame } = await scanModule();
-    if (cameraOn) { await runScan(view, captureFrame(video)); updateScanCount(); }
-  });
+// Guided capture: live pose check on the camera image, then a burst of photos.
+// The live check uses the same tips as the photo check (scanQuality).
+const BURST = 4;
+async function guidedCapture(view, hint) {
+  const { captureFrame, quickPose, scanQuality } = await scanModule();
+  const el = $('countdown'), box = video.parentElement;
+  const say = (t, ok) => { el.textContent = t; el.style.fontSize = t.length > 3 ? '17px' : ''; box.dataset.ok = ok ? '1' : '0'; };
+  setStatus(hint);
+  let good = 0;
+  const until = performance.now() + 25000; // after 25 s we take the photos anyway
+  while (cameraOn && performance.now() < until && good < 2) {
+    const lm = await quickPose(captureFrame(video));
+    const tips = lm ? scanQuality({ landmarks: lm }, view === 'back' ? 'front' : view) : ['Kein Körper erkannt – ganz ins Bild stellen.'];
+    good = tips.length ? 0 : good + 1;
+    say(tips.length ? tips[0] : 'Pose passt ✓ – still halten', !tips.length);
+    await new Promise((r) => setTimeout(r, 450));
+  }
+  for (let s = 3; s > 0 && cameraOn; s--) { say(String(s), true); await new Promise((r) => setTimeout(r, 800)); }
+  // burst: several photos, the measurements use the median
+  const frames = [];
+  for (let i = 0; i < BURST && cameraOn; i++) { frames.push(captureFrame(video)); say('📸 ' + (i + 1) + '/' + BURST, true); await new Promise((r) => setTimeout(r, 250)); }
+  say('', true); delete box.dataset.ok;
+  for (const [i, f] of frames.entries()) await runScan(view, f, { apply: i === frames.length - 1 });
+  updateScanCount();
+}
+for (const [view, id, hint] of [['front', 'snapFront', 'Frontal zur Kamera stellen, Arme etwas vom Körper weg …'], ['back', 'snapBack', 'Rücken zur Kamera drehen …'], ['side', 'snapSide', 'Seitlich zur Kamera stellen …']]) {
+  $(id).addEventListener('click', () => guidedCapture(view, hint));
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +253,8 @@ function showMeasures(body) {
   const model = fitResult?.model;
   const rows = LABELS.map(([key, label, src]) => {
     const n = src === 'side' ? scans.side.length : scans.front.length;
-    const photo = n ? `${cm(body[key])} <span class="src">${n}×</span>` : '<span class="src">kein Foto</span>';
+    const pm = body.spread?.[key] ? ` ±${(body.spread[key] * 100).toFixed(1)}` : '';
+    const photo = n ? `${cm(body[key])}<span class="src">${pm} · ${n}×</span>` : '<span class="src">kein Foto</span>';
     return `<tr><td>${label}</td><td>${photo}</td><td>${model ? cm(model[key]) : ''}</td></tr>`;
   });
   $('measures').innerHTML = `<tr><td>Größe</td><td colspan="2">${cm(body.height)} <span class="src">eingegeben</span></td></tr>` +

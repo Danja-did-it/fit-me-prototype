@@ -363,3 +363,12 @@ async function refineMask(image, coarse) {
   if (ratio < 0.9 || ratio > 1.1) { console.info('fine mask rejected', ratio); return null; }
   return { data, width: W, height: H, refined: ratio };
 }
+
+// Fast pose check on a live camera frame (no masks) -> landmarks or null
+export async function quickPose(image) {
+  const landmarker = await loadPose();
+  const r = landmarker.detect(image);
+  const L = r.landmarks[0] || null;
+  r.close?.();
+  return L;
+}

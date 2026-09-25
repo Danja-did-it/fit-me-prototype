@@ -111,6 +111,24 @@ export async function analyzeFace(image, pose) {
     chin: clamp(dist(L[17], L[152]) / fh / 0.21, 0.8, 1.25),
   };
 
+  // ---- white balance: the white of the eye is (almost) neutral white. Its color on
+  // the photo tells us the color of the light; we correct all colors by it.
+  const sclera = [];
+  for (const [iris, a, b] of [[468, 133, 33], [473, 362, 263]]) {
+    for (const corner of [a, b]) {
+      const p = { x: L[iris].x + (L[corner].x - L[iris].x) * 0.55, y: L[iris].y + (L[corner].y - L[iris].y) * 0.55 };
+      const c = sample(pixels, p, Math.max(1.5, dist(L[iris], L[corner]) * 0.12), ([R, G, B]) => R + G + B > 300);
+      if (c !== null) sclera.push(c);
+    }
+  }
+  let wb = [1, 1, 1];
+  if (sclera.length >= 2) {
+    const avgCh = (sh) => sclera.reduce((t, c) => t + ((c >> sh) & 255), 0) / sclera.length;
+    const rgb = [avgCh(16), avgCh(8), avgCh(0)], gray = (rgb[0] + rgb[1] + rgb[2]) / 3;
+    if (gray > 90) wb = rgb.map((v) => clamp(gray / v, 0.8, 1.25));
+  }
+  const fixWB = (c) => c == null ? c : (Math.min(255, Math.round(((c >> 16) & 255) * wb[0])) << 16) | (Math.min(255, Math.round(((c >> 8) & 255) * wb[1])) << 8) | Math.min(255, Math.round((c & 255) * wb[2]));
+
   // ---- colors ----
   const r = Math.max(3, fw * 0.035);
   const skin = sample(pixels, L[50], r) ?? 0xe0ac8a;           // left cheek
@@ -163,7 +181,8 @@ export async function analyzeFace(image, pose) {
 
   return {
     measures: m,
-    colors: { skin: skinMix, eye: eyeCol, lip, brow, hair: hairColor, beard: mixColors(brow, hairColor) },
+    wb, fixWB,
+    colors: { skin: fixWB(skinMix), eye: fixWB(eyeCol), lip: fixWB(lip), brow: fixWB(brow), hair: fixWB(hairColor), beard: fixWB(mixColors(brow, hairColor)) },
     hair: hairInfo,
     beard, mustache,
     debug: { crop, landmarks: L, hairMask },

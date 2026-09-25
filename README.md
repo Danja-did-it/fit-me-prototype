@@ -29,6 +29,7 @@ Weitere Befehle:
 | `npm run preview` | zeigt die gebaute Seite aus `dist/` lokal an |
 | `npm run deploy` | baut und lädt `dist/` auf den Branch `gh-pages` (GitHub Pages, HTTPS) |
 | `node scripts/check.mjs <url>` | Test: öffnet die Seite in Chrome (unsichtbar), listet Konsolen-Fehler, macht Screenshot |
+| `node scripts/validate.mjs <url> 6` | Genauigkeits-Test: virtuelle Menschen mit bekannten Maßen scannen, Fehler in cm (docs/ACCURACY.md) |
 
 ## Bedienung
 
@@ -62,6 +63,9 @@ Weitere Befehle:
   2,5–3 m Abstand, ganzer Körper mit etwas Rand. Allein: Handy abstellen + 5-Sekunden-Selbstauslöser.
 - **Licht:** gleichmäßig von vorn, kein Gegenlicht; ruhiger, einfarbiger Hintergrund.
 - **Größe** genau eintragen. Nach jedem Foto zeigt die App Tipps, falls etwas nicht passt.
+- **Kamera-Aufnahme** ist geführt: grüner Rahmen = Pose passt, dann 3-2-1 und 4 Fotos in Serie (Median).
+- **Mehrere Aufnahmen** je Ansicht (Front, Rücken, Seite) machen die Maße genauer; die Tabelle zeigt ± pro Maß.
+- **Mit Freunden teilen:** Der Link funktioniert überall (HTTPS). Alles läuft auf dem jeweiligen Handy, nichts wird hochgeladen.
 
 ## Auf dem Handy
 

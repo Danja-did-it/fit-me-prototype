@@ -151,3 +151,16 @@
 - Learned: MakeHuman gender/age live in the ethnic targets (universal ones only muscle/weight);
   fixed-height neck measure coupled all params -> use narrowest row; rigid cubes crack at knees -> GPU skinning;
   shadow lookup must be skinned too (worldpos_vertex), else dark blotches.
+
+## Iteration 10: scan precision (user: focus on perfecting the scan; can friends use the link? -> yes, public HTTPS, all on-device)
+- Accuracy harness `scripts/validate.mjs` (virtual people with known measures, phone-like renders, full pipeline) -> docs/ACCURACY.md.
+- Mask: tiled multi-class segmentation FAILED (selfie model does not recognize body crops without a face) -> replaced by
+  a guided filter (edge-aware refinement) on the pose mask; sanity check keeps the pose mask if the area changes > 10 %.
+- Dense outline profiles (torso 10 heights, thigh/calf 4 each, front + side), outlier filter, arm-line clipping, hands below wrists.
+- Limb widths from the outer edge (photo = model definition); model measured in the photo pose; calibrated virtual
+  MediaPipe points; exact triangle cross-sections (vertex bands missed 2-4 cm mesh rows -> zeros in calf profile).
+- Fit: 5 alternating phases; leg/arm length weights 6/3.
+- Guided capture: live pose check on the camera image (same tips as photo check, green/orange frame), 3-2-1, burst of 4 photos.
+- Corrections: white balance from the eye whites (all colors), clothing thickness taken off (shirt 1.2 cm, long pants 0.8 cm),
+  +- spread per measure from several photos in the table.
+- Results (6 virtual people, mean abs error): waist 0.5, hip 1.1, thigh 1.0, calf 0.2, upper arm 1.3, leg length 2.8 cm.

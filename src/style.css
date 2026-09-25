@@ -27,7 +27,7 @@ button.active { background: var(--accent); color: #0b1a22; border-color: var(--a
 .camera { position: relative; margin-bottom: 8px; }
 .camera video { width: 100%; max-height: 50vh; object-fit: contain; background: #000; border-radius: 8px; display: block; }
 .camera video.mirror { transform: scaleX(-1); }
-#countdown { position: absolute; inset: 0; display: grid; place-items: center;
+#countdown { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 0 12px;
   font-size: 64px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000; pointer-events: none; }
 
 .scans { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 6px; }
@@ -76,3 +76,7 @@ details[open] summary { margin-bottom: 8px; }
     padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   button, .btn { padding: 10px 12px; } /* bigger touch targets */
 }
+
+/* guided capture: green / orange frame around the camera image */
+.camera[data-ok="1"] video { outline: 4px solid #43a047; outline-offset: -4px; }
+.camera[data-ok="0"] video { outline: 4px solid #fb8c00; outline-offset: -4px; }
