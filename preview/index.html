@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#14161a" />
   <title>Fit-me Prototype</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22%3E%3Crect width=%221%22 height=%221%22 fill=%22%234fc3f7%22/%3E%3C/svg%3E" />
-  <script type="module" crossorigin src="./assets/index-D0748tQu.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-BnhWz3KM.css">
+  <script type="module" crossorigin src="./assets/index-3Kf3A_z0.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-D-cNzRHU.css">
 </head>
 <body>
   <!-- 3D view -->
@@ -15,12 +15,22 @@
 
   <!-- Control panel -->
   <aside id="panel">
-    <h1>Fit-me <span>Prototyp · v7 Vorschau</span></h1>
+    <h1>Fit-me <span>Prototyp · v8 Vorschau</span></h1>
 
     <section>
       <h2>1 · Körper scannen</h2>
-      <p class="hint">Ganzer Körper im Bild, eng anliegende Kleidung, Arme leicht vom Körper weg.
-        Alles wird nur auf diesem Gerät berechnet – kein Upload.</p>
+      <details class="guide">
+        <summary>So scannst du richtig</summary>
+        <ul>
+          <li><b>Kleidung:</b> oben ohne oder enges Sporttop, enge kurze Hose, barfuß. Haare aus dem Gesicht, keine Kappe/Brille.</li>
+          <li><b>Front:</b> gerade stehen, Füße hüftbreit, Arme 20–30° vom Körper weg, Blick in die Kamera.</li>
+          <li><b>Seite:</b> 90° drehen, eine Schulter zur Kamera, Arme locker hängen lassen.</li>
+          <li><b>Kamera:</b> Rückkamera, jemand anderes fotografiert. Handy auf Hüfthöhe, senkrecht, 2,5–3 m Abstand.</li>
+          <li><b>Licht:</b> gleichmäßig von vorn, kein Gegenlicht, ruhiger Hintergrund.</li>
+        </ul>
+      </details>
+      <p class="hint">Alles wird nur auf diesem Gerät berechnet – kein Upload. Beim ersten Scan werden die
+        genauen Modelle geladen (ca. 60 MB, danach im Cache).</p>
       <div class="camera" hidden>
         <video id="video" playsinline muted></video>
         <div id="countdown"></div>
@@ -41,6 +51,7 @@
         <figure><canvas id="prevFace"></canvas><figcaption>Gesicht</figcaption></figure>
       </div>
       <p id="status" role="status">Bereit.</p>
+      <ul id="tips" class="tips"></ul>
     </section>
 
     <section>
@@ -72,8 +83,24 @@
           <option value="full">Vollbart</option>
         </select>
       </label>
+      <label class="field">Oberteil
+        <select id="top">
+          <option value="none">Oben ohne</option>
+          <option value="short" selected>T-Shirt</option>
+          <option value="long">Langarm</option>
+          <option value="tank">Ärmellos</option>
+        </select>
+      </label>
+      <label class="field">Hose
+        <select id="bottoms">
+          <option value="short" selected>Kurz</option>
+          <option value="knee">Knielang</option>
+          <option value="long">Lang</option>
+        </select>
+      </label>
       <div class="row">
         <label class="check"><input type="checkbox" id="bangs"> Pony</label>
+        <label class="check"><input type="checkbox" id="shoes" checked> Schuhe</label>
         <label class="check"><input type="checkbox" id="mustache"> Schnurrbart</label>
       </div>
       <div class="colors">
