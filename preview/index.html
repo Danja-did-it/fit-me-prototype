@@ -9,7 +9,7 @@
   <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: ws: wss:" />
   <title>Fit-me Prototype</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22%3E%3Crect width=%221%22 height=%221%22 fill=%22%234fc3f7%22/%3E%3C/svg%3E" />
-  <script type="module" crossorigin src="./assets/index-l5PCRGSP.js"></script>
+  <script type="module" crossorigin src="./assets/index-ntMqco5O.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-CtOMgGk3.css">
 </head>
 <body>
@@ -22,7 +22,7 @@
 
   <!-- Control panel -->
   <aside id="panel">
-    <h1>Fit-me <span>Prototyp · v35 Vorschau</span></h1>
+    <h1>Fit-me <span>Prototyp · v36 Vorschau</span></h1>
 
     <section>
       <h2>1 · Körper scannen</h2>
@@ -91,6 +91,12 @@
 
     <section>
       <h2>Individuell</h2>
+      <label class="field">Stil
+        <select id="style">
+          <option value="game" selected>Voxel-Double (Game-Look)</option>
+          <option value="real">Realistisch (feine Würfel)</option>
+        </select>
+      </label>
       <p class="hint" id="faceInfo">Noch kein Gesicht erkannt – Gesicht ist Durchschnitt. Front-Foto mit gut sichtbarem Gesicht wählen.</p>
       <label class="field">Frisur
         <select id="hairStyle"></select>
@@ -122,6 +128,11 @@
         <label class="check"><input type="checkbox" id="bangs"> Pony</label>
         <label class="check"><input type="checkbox" id="shoes" checked> Schuhe</label>
         <label class="check"><input type="checkbox" id="mustache"> Schnurrbart</label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="accGlasses"> Sonnenbrille</label>
+        <label class="check"><input type="checkbox" id="accChain"> Kette</label>
+        <label class="check"><input type="checkbox" id="accWatch"> Uhr</label>
       </div>
       <div class="colors">
         <label>Haut<input type="color" id="colSkin"></label>
@@ -175,9 +186,9 @@
         <select id="voxel">
           <option value="0.04">4 cm (grob)</option>
           <option value="0.02">2 cm</option>
-          <option value="0.015">1,5 cm</option>
+          <option value="0.015" selected>1,5 cm (Voxel-Double)</option>
           <option value="0.01">1 cm (schneller)</option>
-          <option value="0.0075" selected>0,75 cm (Muskeldetails)</option>
+          <option value="0.0075">0,75 cm (Muskeldetails)</option>
           <option value="0.005">0,5 cm (sehr fein, langsamer)</option>
         </select>
       </label>
