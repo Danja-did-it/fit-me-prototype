@@ -301,3 +301,10 @@
   odml.pa.googleapis.com every minute - no photos, but the app promises nothing leaves the device. Now answered
   locally (fetch shim in src/mplog.js) and blocked by a Content-Security-Policy (connect-src 'self' only). Verified:
   no request, no console error after > 60 s.
+- Round 6 (v30): voxel-game render look. Screen-space AO was ruled out (post passes do not know the GPU skinning ->
+  the AO would sit next to the animated cubes). Instead: studio image based light (RoomEnvironment via PMREM,
+  intensity 0.3, hemisphere light lowered), exposure 1.12, and a cube-edge shading in the fragment shader (each face
+  slightly darker toward its edges, 11 %, scaled by cube size: visible on 0.75 cm body cubes, faint on fine detail) -
+  single cubes read like in MagicaVoxel / Teardown renders. Screenshot v30-voxel-look.png. Validation (renders use
+  the scene light): shoulder 1.5, hip 1.1, others <= 0.9 cm - only the virtual test photos are affected, not real
+  phone photos.

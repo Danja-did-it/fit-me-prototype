@@ -35,5 +35,6 @@ Screenshots: `docs/screenshots/`.
 | v27 | 26.09.2026 | Echtes Gesicht aus dem Foto auf dem Voxel-Kopf (Projektion über 478 Gesichtspunkte, lokal) – Brauen, Lippen, Falten, Bart, Brille wie auf dem Foto | – |
 | v28 | 26.09.2026 | Kleidung wie auf dem Foto: Front- und Rückenfoto werden auf den Körper projiziert (Muster, Revers, Knöpfe, Falten) | – |
 | v29 | 26.09.2026 | Haar-Umriss aus der Haar-Maske; Datenschutz: MediaPipe-Nutzungsstatistik an Google wird lokal abgefangen + per CSP blockiert | – |
+| v30 | 26.09.2026 | Voxel-Game-Look: Studio-Umgebungslicht, feine Würfelkanten | v30-voxel-look.png |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

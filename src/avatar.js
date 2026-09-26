@@ -238,10 +238,21 @@ vec3 skinCube(vec3 corner) {
   return (S * c).xyz + R * o * g;
 }`;
     const project = `vec4 mvPosition = modelViewMatrix * vec4(skinCube(transformed), 1.0);
-gl_Position = projectionMatrix * mvPosition;`;
+gl_Position = projectionMatrix * mvPosition;
+vCubeSize = 2.0 * max(abs(position.x), max(abs(position.y), abs(position.z)));
+vCube = position / (0.5 * vCubeSize);`;
+    // Voxel-game look: every cube face gets slightly darker toward its edges, so single cubes read
+    // like in MagicaVoxel / Teardown renders - strong on the 0.75 cm body cubes, faint on fine detail.
+    const bevel = `#include <color_fragment>
+{
+  vec3 a = abs(vCube);
+  float hi = max(a.x, max(a.y, a.z)), lo = min(a.x, min(a.y, a.z));
+  float mid = a.x + a.y + a.z - hi - lo; // distance to the nearest edge on this face
+  diffuseColor.rgb *= 1.0 - 0.11 * smoothstep(0.003, 0.007, vCubeSize) * smoothstep(0.7, 1.0, mid);
+}`;
     const inject = (shader, normals) => {
       shader.uniforms.boneM = this.boneUniform;
-      let v = shader.vertexShader.replace('#include <common>', '#include <common>\n' + skinChunk)
+      let v = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\n' + skinChunk)
         .replace('#include <project_vertex>', project)
         // shadows are looked up at the moved position too
         .replace('#include <worldpos_vertex>', `vec4 worldPosition = modelMatrix * vec4(skinCube(transformed), 1.0);`);
@@ -249,6 +260,8 @@ gl_Position = projectionMatrix * mvPosition;`;
       if (normals) v = v.replace('#include <beginnormal_vertex>',
         'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, 0.85));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
       shader.vertexShader = v;
+      if (normals) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;')
+        .replace('#include <color_fragment>', bevel);
     };
     this.material.onBeforeCompile = (shader) => inject(shader, true);
     this.depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });

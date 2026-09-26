@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Avatar, HAIR_STYLES } from './avatar.js';
 import { buildBodyMap } from './bodymap.js';
 import { bodyFromScans, verticalExtent } from './measure.js';
@@ -17,7 +18,7 @@ const stage = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.NeutralToneMapping; // true-to-life colors (skin keeps its saturation)
-renderer.toneMappingExposure = 1.25;
+renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap; // soft edges via shadow.radius
 stage.appendChild(renderer.domElement);
@@ -38,7 +39,11 @@ controls.maxDistance = 8;
 window.camera = camera; window.controls = controls; // for the test script
 
 // Studio lights: warm key light with soft shadows, cool fill, rim light from behind
-scene.add(new THREE.HemisphereLight(0xffffff, 0x4a4440, 0.6)); // neutral: colors stay true
+// soft studio light from all sides (image based lighting, like a photo studio), neutral colors
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.3;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a4440, 0.3));
 const key = new THREE.DirectionalLight(0xfffaf4, 2.3);
 key.position.set(1.6, 3.2, 2.6);
 key.castShadow = true;
