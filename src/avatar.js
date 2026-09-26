@@ -49,7 +49,7 @@ export const HERO_LOOK = {
   outfit: { top: 'none', sleeves: 'none', bottoms: 'long', shoes: true },
 };
 export const HERO_COLORS = {
-  ...COLORS, skin: 0xd98c5f, hair: 0x1c1410, brow: 0x1c1410, beard: 0x1c1410, shorts: 0x161616, shoe: 0xdedede, lip: 0xb86e50,
+  ...COLORS, skin: 0xd98c5f, hair: 0x1c1410, brow: 0x1c1410, beard: 0x1c1410, shorts: 0x161616, shoe: 0xe2e8f0, lip: 0xb86e50,
 };
 // start sliders of the hero (fat / muscle in %): lean and defined, the abs show
 export const HERO_COMP = { fat: -50, muscle: 60 };
@@ -852,9 +852,14 @@ vCube = position / (0.5 * vCubeSize);`;
       const i = cellX(x) - cellX(W.hipR[0]), j = cellY(y) - cellY(W.hipR[1] - 0.13 * s);
       if (n.z > 0.3 && jn === 'hipR' && ((i === 0 && Math.abs(j) <= 2) || (j === 1 && Math.abs(i) <= 1))) color = LOGO;
     }
-    // game style: long pants are baggy (street style) - extra cube layers, wider below the knee
-    if (game && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn) && !result) {
-      result = { layers: /^knee/.test(jn) ? 2 : 1, color };
+    // game style: long pants are baggy (street style) - an extra cube layer, a darker cuff row at the hem
+    // (no extra layer there, so the sneakers stay visible) and warm fold highlights on the lit side
+    const hemY = W.ankleL[1] + 0.02 * s; // = end of long pants
+    const pants = game && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn);
+    if (pants) {
+      if (y < hemY + q.size) color = 0x2a2220; // cuff
+      else if (cellY(y) % 4 === 0 && (n.x < -0.2 || n.z > 0.6)) color = new THREE.Color(c.shorts).lerp(new THREE.Color(0x3a2c24), 0.5).getHex();
+      if (y >= hemY + 1.5 * q.size && !result) result = { layers: 1, color };
     } else if (game && o.bottoms === 'long' && jn === 'hipR' && color === LOGO) {
       result = { layers: 1, color }; // the logo sits on the baggy outer layer
     }
@@ -863,10 +868,15 @@ vCube = position / (0.5 * vCubeSize);`;
     if (acc.chain && (jn === 'neck' || jn === 'chest')) {
       const a = Math.atan2(x - W.neck[0], z - W.neck[2]), front = Math.max(0, Math.cos(a));
       // game style: a longer U down onto the upper chest, the band at least ~1 cube high (no gaps)
-      const yc = game ? W.neck[1] - 0.045 * s - 0.1 * s * front ** 1.6 : W.neck[1] - 0.035 * s - 0.075 * s * front ** 1.5;
-      const pend = front > 0.985 && y < yc && y > yc - 0.022 * s;
-      if ((Math.abs(y - yc) < (game ? Math.max(0.0045 * s, 0.55 * q.size) : 0.0045 * s) && Math.hypot(x - W.neck[0], z - W.neck[2]) < (game ? 0.14 + 0.08 * front : 0.14) * s) || pend) {
-        color = game ? ((cellX(x) + cellY(y) + Math.floor(z / q.size)) & 1 ? 0xeef1f5 : 0x7d838c) // links: bright / dark
+      // game style: a U hanging on the upper chest (lowest point ~1/3 from the neck to the navel), the
+      // sides close along the neck (not over the shoulders), 1 cube thick, a 1x2 pendant
+      const yc = game ? W.neck[1] - 0.03 * s - 0.16 * s * front ** 2.2 : W.neck[1] - 0.035 * s - 0.075 * s * front ** 1.5;
+      const r = Math.hypot(x - W.neck[0], z - W.neck[2]), neckR = 0.55 * (this.body.neckWidth || 0.12) * s;
+      const pend = game ? cellX(x) === cellX(0) && cellY(y) < cellY(yc) && cellY(y) >= cellY(yc) - 2 && front > 0.9
+        : front > 0.985 && y < yc && y > yc - 0.022 * s;
+      const sidesOk = !game || front > 0.5 || (r < neckR + q.size && !(ax > neckR + q.size && y > W.shoulderL[1] - 0.02 * s));
+      if ((Math.abs(y - yc) < (game ? Math.max(0.0045 * s, 0.55 * q.size) : 0.0045 * s) && r < (game ? 0.14 + 0.08 * front : 0.14) * s && sidesOk) || pend) {
+        color = game ? (pend || (cellX(x) + cellY(y) + Math.floor(z / q.size)) & 1 ? 0xf2f4f7 : 0x5d636b) // links: bright / dark
           : hash(Math.round(x / 0.006), Math.round(y / 0.006), Math.round(z / 0.006), 21) > 0.5 ? 0xe4e7ec : 0xb9bec6;
         special = null;
         result = { layers: 1, color };
@@ -900,7 +910,7 @@ vCube = position / (0.5 * vCubeSize);`;
     if (special) out.copy(special); else out.set(color);
     // game style: a little variation per cube (skin: value and a touch of hue, pants a bit more), so the
     // surfaces read as single cubes like in the concept
-    if (game && !special && ((color === c.skin && !head) || color === c.shorts)) {
+    if (game && !special && ((color === c.skin && !head) || color === c.shorts)) { // (fold bands / cuff stay even)
       const h1 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 31), h2 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 32);
       if (color === c.skin) out.offsetHSL((h2 - 0.5) * 0.012, 0, 0).multiplyScalar(0.97 + 0.06 * h1);
       else out.multiplyScalar(0.92 + 0.16 * h1);
@@ -1113,11 +1123,14 @@ vCube = position / (0.5 * vCubeSize);`;
           const side = Math.abs(ix - cx) > 1.2 && !up, fwd = iz - cz;
           let c;
           if (this.style === 'game') {
-            // chunky voxel sneaker in whole cube rows: grey sole row, upper with a side stripe in the
-            // row above, laces on the top toward the toes (the metric bands below fall between the rows)
-            c = iy === 0 ? new THREE.Color(0xb0b0b0) : shoe.clone().multiplyScalar(0.97 + 0.03 * hash(ix, iy, iz, 13));
-            if (iy === 1 && side && fwd > -2 && fwd < 3) c = new THREE.Color(0xa6abb2);
-            if (iy > 0 && up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4) c = new THREE.Color(0x9aa0a8).multiplyScalar(iz % 2 ? 1 : 0.9);
+            // chunky voxel sneaker in whole cube rows: light grey sole, a darker sole line row, the upper
+            // with a side stripe, laces on the top toward the toes (the metric bands below fall between rows)
+            // (cool greys and a cool white: they stay neutral in the warm light)
+            // the upper is cooled down further (less red) so it renders neutral white in the warm game light
+            c = iy === 0 ? new THREE.Color(0xa3a9b1) : iy === 1 && !up ? new THREE.Color(0x7d848d)
+              : shoe.clone().multiply(new THREE.Color(0.55, 0.66, 0.78)).multiplyScalar(0.97 + 0.03 * hash(ix, iy, iz, 13));
+            if (iy === 2 && side && fwd > -2 && fwd < 3) c = new THREE.Color(0xaab2bd);
+            if (iy > 1 && up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4) c = new THREE.Color(0x9aa3ae).multiplyScalar(iz % 2 ? 1 : 0.9);
           } else {
             c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
             // sneaker details: grey side stripe, laces on top toward the toes

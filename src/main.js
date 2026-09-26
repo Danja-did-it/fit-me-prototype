@@ -86,7 +86,7 @@ const canvasTex = (w, h, paint) => {
 };
 const sunset = canvasTex(2, 512, (g, w, h) => {
   const grad = g.createLinearGradient(0, 0, 0, h);
-  for (const [t, col] of [[0, '#161a2a'], [0.3, '#2e2a45'], [0.48, '#a86a55'], [0.56, '#e0925e'], [0.64, '#5a3c3a'], [0.72, '#2a201d'], [1, '#121012']]) grad.addColorStop(t, col);
+  for (const [t, col] of [[0, '#151a2b'], [0.22, '#2e2a45'], [0.34, '#b8704f'], [0.4, '#e0925e'], [0.47, '#6a4640'], [0.58, '#2a201d'], [1, '#121012']]) grad.addColorStop(t, col);
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
 });
 sunset.colorSpace = THREE.SRGBColorSpace;
@@ -97,7 +97,7 @@ const fade = canvasTex(256, 256, (g, w, h) => {
 });
 const floorGame = new THREE.Mesh(
   new THREE.CircleGeometry(2.2, 64),
-  new THREE.MeshStandardMaterial({ color: 0x2b211d, roughness: 0.55, metalness: 0.15, alphaMap: fade, transparent: true })
+  new THREE.MeshStandardMaterial({ color: 0x1a1514, roughness: 0.5, metalness: 0.15, alphaMap: fade, transparent: true })
 );
 floorGame.rotation.x = -Math.PI / 2;
 floorGame.receiveShadow = true;
@@ -108,8 +108,8 @@ scene.add(floorGame);
 const STAGES = {
   real: { bg: new THREE.Color(0x1b1e24), exposure: 1.12, env: 0.3, hemi: [0xffffff, 0x4a4440, 0.3],
     key: [0xfffaf4, 2.3, [1.6, 3.2, 2.6]], fill: [0xf2f4ff, 0.75, [-2.5, 1.8, 1.5]], rim: [0xffffff, 0.9, [-0.5, 2.5, -3]], rim2: [0xffb070, 0, [2.2, 2.6, -2.2]] },
-  game: { bg: sunset, exposure: 1.25, env: 0.2, hemi: [0xffd8b0, 0x2a1a12, 0.5],
-    key: [0xffe0c2, 3.4, [-1.4, 3.2, 2.4]], fill: [0x8ea2d8, 0.45, [2.5, 1.2, 1.8]], rim: [0xff8c42, 3.8, [-2.4, 2.2, -2.0]], rim2: [0xffb070, 1.8, [2.2, 2.6, -2.2]] },
+  game: { bg: sunset, exposure: 1.35, env: 0.2, hemi: [0xffd8b0, 0x2a1a12, 0.35],
+    key: [0xfff0e2, 4.2, [-1.4, 3.2, 2.4]], fill: [0x8ea2d8, 0.25, [2.5, 1.2, 1.8]], rim: [0xff8c42, 3.0, [-3.0, 1.8, -0.8]], rim2: [0xffb070, 1.6, [3.0, 2.0, -0.8]] },
 };
 function setStage(style) {
   const S = STAGES[style] || STAGES.real;
