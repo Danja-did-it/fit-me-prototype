@@ -291,3 +291,13 @@
   but where the outfit guess said "skin" and the photo clearly shows something else (long sleeves taken for short),
   the photo wins. Sample portrait: suit lapel, buttons, lighter shirt, dark sleeves appear. Known: arms posed very
   differently from the fit (arm on a chair) get some wrong patches.
+- Round 5 (v29): hair outline from the hair mask: half width per height (3 eye-chin units above the eyes to 3.5 below)
+  + highest hair point; the avatar's hair thickness per height is set so its front outline matches (70 % outline,
+  30 % style default, never below 60 % of it), only for the scanned style and only when the mask looks complete
+  (>= 12 rows, hair well above the forehead). Round-trip test with rendered voxel hair: MediaPipe's hair segmenter
+  only partly sees voxel hair (afro detected as short) - so synthetic tests cannot verify this; the safety checks
+  keep a partial mask from shrinking real hair.
+- PRIVACY FIX: MediaPipe tasks-vision 1.0.1 sends usage statistics (model names, timings) to
+  odml.pa.googleapis.com every minute - no photos, but the app promises nothing leaves the device. Now answered
+  locally (fetch shim in src/mplog.js) and blocked by a Content-Security-Policy (connect-src 'self' only). Verified:
+  no request, no console error after > 60 s.

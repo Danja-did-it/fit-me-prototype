@@ -291,6 +291,23 @@ export async function analyzeFace(image, pose) {
     width: widthVol,   // volume at the sides
     sideCover,         // share of hair beside the temples (low = shaved sides)
     bangs: bangsSeen,
+    // hair outline (front view): half width per height, from 3 eye-chin units above the eyes to 3.5 below,
+    // in half eye distances; top = highest hair point. The avatar's hair takes this outline (avatar.js addHair).
+    ...(() => {
+      const c = mid(L[468], L[473]), half = dist(L[468], L[473]) / 2, ec = L[152].y - c.y;
+      const w = [];
+      let topV = null;
+      for (let v = 3; v >= -3.5 - 1e-9; v -= 0.1) {
+        const y = Math.round(c.y - v * ec);
+        if (y < 0 || y >= CROP) { w.push(null); continue; }
+        let lo = -1, hi = -1;
+        for (let x = 0; x < CROP; x++) if (hairMask[y * CROP + x] > 0) { if (lo < 0) lo = x; hi = x; }
+        if (lo < 0) { w.push(null); continue; }
+        if (topV === null) topV = v;
+        w.push(((c.x - lo) + (hi - c.x)) / 2 / half);
+      }
+      return { profile: { from: 3, step: 0.1, w }, topV, scanStyle: hairStyle };
+    })(),
   };
 
   // facial hair: chin / jaw / upper lip clearly darker than the cheeks

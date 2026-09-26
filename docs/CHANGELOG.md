@@ -34,5 +34,6 @@ Screenshots: `docs/screenshots/`.
 | v26 | 26.09.2026 | Muskel-Definition bei niedrigem KFA (Rinnen zwischen Muskelgruppen, Sixpack); Standard-Würfel 0,75 cm | v26-muscle-definition.png |
 | v27 | 26.09.2026 | Echtes Gesicht aus dem Foto auf dem Voxel-Kopf (Projektion über 478 Gesichtspunkte, lokal) – Brauen, Lippen, Falten, Bart, Brille wie auf dem Foto | – |
 | v28 | 26.09.2026 | Kleidung wie auf dem Foto: Front- und Rückenfoto werden auf den Körper projiziert (Muster, Revers, Knöpfe, Falten) | – |
+| v29 | 26.09.2026 | Haar-Umriss aus der Haar-Maske; Datenschutz: MediaPipe-Nutzungsstatistik an Google wird lokal abgefangen + per CSP blockiert | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

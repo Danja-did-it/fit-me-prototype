@@ -791,6 +791,29 @@ gl_Position = projectionMatrix * mvPosition;`;
       return Math.hypot(x / (R[0] * flare), Math.max(0, y - C[1]) / R[1], (z - C[2]) / (R[2] * flare));
     };
     const close = st.cover === 'short'; // hair ends above the ears / at the nape
+    // Outline from the hair scan (front view): the thickness at each height is set so the hair is as
+    // wide as on the photo, the crown as high. Only for the scanned style (a chosen style keeps its shape).
+    // trusted only when the hair mask looks complete (enough rows, hair well above the forehead)
+    const rows = look.profile ? look.profile.w.filter((w) => w != null).length : 0;
+    const prof = look.profile && look.style === look.scanStyle && look.style !== 'none' && rows >= 12 && (look.topV ?? 0) >= 0.9 ? look.profile : null;
+    const ecM = E.y - chin;
+    const outlineT = (y) => {
+      if (!prof) return null;
+      const i = Math.round((prof.from - (y - E.y) / ecM) / prof.step), wv = prof.w[i];
+      const dyN = Math.max(0, y - C[1]) / R[1];
+      const flare = 1 + (st.cover === 'full' ? 0.1 * Math.min(1, Math.max(0, (C[1] - y) / (0.12 * s))) : 0);
+      let t = null;
+      if (wv != null) {
+        const xSkull = R[0] * flare * Math.sqrt(Math.max(0.05, 1 - dyN * dyN));
+        t = (wv * E.x / xSkull - 1) * R[0];
+      }
+      if (look.topV != null && dyN > 0.6) { // near the crown: height of the hair on the photo
+        const tTop = E.y + look.topV * ecM - (C[1] + R[1]);
+        const k = Math.min(1, (dyN - 0.6) / 0.4);
+        t = t == null ? tTop : t * (1 - k) + tTop * k;
+      }
+      return t == null ? null : Math.max(0.002 * s, Math.min(0.07 * s, t));
+    };
     // ponytail: from the back of the head down to the shoulder blades; bun: ball at the back top
     const tailA = [0, E.y + 0.03 * s, C[2] - R[2] - 0.004 * s], tailB = [0, shoulder - 0.06 * s, C[2] - R[2] - 0.035 * s];
     const inTail = (x, y, z) => {
@@ -812,9 +835,10 @@ gl_Position = projectionMatrix * mvPosition;`;
       return bottom - vShape - (hash(strandOf(x, z), 3, 9, 4) - 0.5) * (st.bangs ? 0.006 : 0.024) * s;
     };
     const inShell = (x, y, z) => {
-      if (y > C[1] + R[1] + thick * 2.5 || y < endY(x, z)) return false;
+      if (y > C[1] + R[1] + maxT * 1.2 || y < endY(x, z)) return false;
       const frontZ = z - C[2];
-      let t = thick;
+      const tp = outlineT(y);
+      let t = tp == null ? thick : Math.max(0.6 * thick, 0.7 * tp + 0.3 * thick); // outline, but keeps the style's character
       if (full && y < chin) {
         // below the chin long hair lies on the back and gets thinner toward the tips
         if (frontZ > -0.035 * s) return false;
@@ -841,10 +865,12 @@ gl_Position = projectionMatrix * mvPosition;`;
       if (y < C[1] && frontZ > 0.02 * s) return false;
       return true;
     };
+    let maxT = thick * 2.1;
+    if (prof) for (let y = bottom; y < C[1] + R[1] + 0.08 * s; y += 0.005) maxT = Math.max(maxT, outlineT(y) ?? 0);
     const inHair = (x, y, z) => inShell(x, y, z) || (st.tail && inTail(x, y, z)) || (st.bun && inBun(x, y, z));
     const hw = worldOf.head, key = 'head|' + V;
     const list = (byJoint[key] ||= []);
-    const reach = thick * 2.5 + (st.quiff ? 0.022 * s : 0) + V;
+    const reach = maxT * 1.2 + (st.quiff ? 0.022 * s : 0) + V;
     const x0 = -R[0] - reach, x1 = -x0, z0 = Math.min(C[2] - R[2] - reach, st.tail ? tailB[2] - 0.03 * s : Infinity), z1 = C[2] + R[2] + reach;
     const yLo = Math.min(bottom - 0.045 * s, st.tail ? tailB[1] - 0.02 * s : Infinity);
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;

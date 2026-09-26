@@ -8,3 +8,13 @@ for (const level of ['error', 'warn']) {
     orig(...args);
   };
 }
+
+// MediaPipe (tasks-vision 1.0.1) sends usage statistics to Google every minute. Photos never
+// leave the device, and neither should these: answer them locally with an empty response.
+// (index.html also blocks any request to other sites with a Content-Security-Policy.)
+const realFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = typeof input === 'string' ? input : input?.url || '';
+  if (url.includes('odml.pa.googleapis.com')) return Promise.resolve(new Response(null, { status: 204 }));
+  return realFetch(input, init);
+};
