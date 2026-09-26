@@ -544,6 +544,7 @@ vCube = position / (0.5 * vCubeSize);`;
       }
     }
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
+    if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
     const bySize = {};
@@ -778,6 +779,50 @@ vCube = position / (0.5 * vCubeSize);`;
     // eyes sit in the (darker) eye socket: lift them a little so the look stays lively
     out.multiplyScalar(eyeDecal ? (special === DETAIL.eyeWhite ? 1.7 : special === DETAIL.pupil ? 1 : 1.35) : shade * jitter);
     return result;
+  }
+
+  // Shoes as their own volume (not just paint on the bare foot, which showed the toes): the foot's
+  // footprint, widened a little, filled up to the top of the foot + margin (at most a collar just
+  // above the ankle), light sole at the bottom. The cubes follow the ankle joint.
+  addShoes(byJoint, worldOf, ctx, V, pos) {
+    const { W, s } = ctx;
+    const shoe = new THREE.Color(this.body.colors.shoe ?? 0x333333), sole = new THREE.Color(0xe6e4df);
+    for (const side of ['L', 'R']) {
+      const jn = 'ankle' + side, top = new Map();
+      const key = (ix, iz) => ix + ',' + iz;
+      for (let v = 0; v < 13380; v++) {
+        if (this.vertJoint[v] !== jn) continue;
+        const ix = Math.floor(pos[v * 3] / V), iz = Math.floor(pos[v * 3 + 2] / V), k = key(ix, iz);
+        top.set(k, { ix, iz, y: Math.max(top.get(k)?.y ?? -1, pos[v * 3 + 1]) });
+      }
+      // widen the footprint by ~0.6 cm and smooth the top (fills the gaps between the toes)
+      const r = Math.max(1, Math.round(0.006 * s / V)), cols = new Map();
+      for (const t of top.values()) {
+        for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+          if (a * a + b * b > r * r) continue;
+          const kk = key(t.ix + a, t.iz + b), old = cols.get(kk);
+          if (!old || old.y < t.y) cols.set(kk, { ix: t.ix + a, iz: t.iz + b, y: t.y });
+        }
+      }
+      const collar = W[jn][1] + 0.02 * s, ground = 0;
+      const colTop = (k) => (cols.has(k) ? Math.min(collar, cols.get(k).y + 0.005 * s) : -1);
+      const inShoe = (ix, iy, iz) => { const y = (iy + 0.5) * V; return y >= ground && y <= colTop(key(ix, iz)); };
+      const jw = worldOf[jn], list = (byJoint[jn + '|' + V] ||= []);
+      let cx = 0, cz = 0;
+      for (const c of cols.values()) { cx += c.ix; cz += c.iz; }
+      cx /= cols.size; cz /= cols.size;
+      for (const [k, { ix, iz }] of cols) {
+        const h = colTop(k);
+        for (let iy = 0; (iy + 0.5) * V <= h; iy++) {
+          if (inShoe(ix + 1, iy, iz) && inShoe(ix - 1, iy, iz) && inShoe(ix, iy + 1, iz) && inShoe(ix, iy, iz + 1) && inShoe(ix, iy, iz - 1)) continue; // inside
+          const x = (ix + 0.5) * V, y = (iy + 0.5) * V, z = (iz + 0.5) * V;
+          const up = !inShoe(ix, iy + 1, iz);
+          const n = new THREE.Vector3(ix - cx, up ? 3 : 0.3, (iz - cz) * 0.6).normalize();
+          const c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
+          list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c, n });
+        }
+      }
+    }
   }
 
   // Hair volume around the skull: a shell that follows the head and then hangs straight down

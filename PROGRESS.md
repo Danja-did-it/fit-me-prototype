@@ -308,3 +308,6 @@
   single cubes read like in MagicaVoxel / Teardown renders. Screenshot v30-voxel-look.png. Validation (renders use
   the scene light): shoulder 1.5, hip 1.1, others <= 0.9 cm - only the virtual test photos are affected, not real
   phone photos.
+- Round 7 (v31): shoes as their own voxel volume (before: paint on the bare foot, toes showed). Foot footprint widened
+  ~0.6 cm, filled up to the top of the foot + 0.5 cm (collar 2 cm above the ankle), light sole, the cubes follow the
+  ankle joint. Reads as a sneaker. Screenshot v31-shoes.png. Accuracy unchanged (validation runs without shoes).

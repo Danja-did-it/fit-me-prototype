@@ -36,5 +36,6 @@ Screenshots: `docs/screenshots/`.
 | v28 | 26.09.2026 | Kleidung wie auf dem Foto: Front- und Rückenfoto werden auf den Körper projiziert (Muster, Revers, Knöpfe, Falten) | – |
 | v29 | 26.09.2026 | Haar-Umriss aus der Haar-Maske; Datenschutz: MediaPipe-Nutzungsstatistik an Google wird lokal abgefangen + per CSP blockiert | – |
 | v30 | 26.09.2026 | Voxel-Game-Look: Studio-Umgebungslicht, feine Würfelkanten | v30-voxel-look.png |
+| v31 | 26.09.2026 | Echte Voxel-Schuhe (Sneaker-Form mit Sohle) statt bemalter Füße | v31-shoes.png |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.
