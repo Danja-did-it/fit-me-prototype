@@ -32,5 +32,6 @@ Screenshots: `docs/screenshots/`.
 | v24 | 26.09.2026 | Körperfettanteil-Schätzung (Navy-Formel aus Umfängen) und Adern bei niedrigem KFA (Unterarm, Handrücken, Bizeps, Wade, Unterbauch); Unterarme in feinen Würfeln | v24-veins.png |
 | v25 | 26.09.2026 | KFA realistisch (Navy + Modell-Schätzung, Untergrenze); feine, dezente, verzweigte Adern; Arme in feinen Würfeln | v25-veins-fine.png |
 | v26 | 26.09.2026 | Muskel-Definition bei niedrigem KFA (Rinnen zwischen Muskelgruppen, Sixpack); Standard-Würfel 0,75 cm | v26-muscle-definition.png |
+| v27 | 26.09.2026 | Echtes Gesicht aus dem Foto auf dem Voxel-Kopf (Projektion über 478 Gesichtspunkte, lokal) – Brauen, Lippen, Falten, Bart, Brille wie auf dem Foto | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

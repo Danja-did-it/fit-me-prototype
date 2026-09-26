@@ -281,6 +281,11 @@ async function startFaceFit(key) {
   if (faceFit.obj !== obj || faceFit.key !== key || !r) return; // newer scan meanwhile / failed: keep the estimate
   Object.assign(faceFit, { face: r.face, result: r });
   avatar.fit.face = r.face;
+  // face texture from the photo (projected via the face points, on this device)
+  const { buildFaceMap } = await import('./facefit.js');
+  faceFit.map = await buildFaceMap(avatar, r.face, obj.photo).catch((e) => (console.warn('face map failed', e), null));
+  if (faceFit.obj !== obj) return;
+  avatar.faceMap = faceFit.map;
   rebuild();
   showMeasures(avatar.body);
 }
@@ -299,7 +304,8 @@ function applyScans() {
   else { avatar.fit = { weight: 0.5, muscle: 0.5, local: {} }; fitResult = null; }
   avatar.fit.face = faceTargets(scans.face?.measures); // face shape: quick estimate first ...
   const fk = faceKey();
-  if (fk && faceFit.face && faceFit.obj === scans.face && faceFit.key === fk) avatar.fit.face = faceFit.face;
+  avatar.faceMap = null;
+  if (fk && faceFit.face && faceFit.obj === scans.face && faceFit.key === fk) { avatar.fit.face = faceFit.face; avatar.faceMap = faceFit.map || null; }
   else if (fk && scans.face.ratios) startFaceFit(fk); // ... then the exact fit on the rendered model head (~1 s)
   rebuild();
   showMeasures(body);

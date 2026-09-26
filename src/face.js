@@ -306,6 +306,8 @@ export async function analyzeFace(image, pose) {
     ratios,
     faceWidthImg: (fw / CROP) * box.size / h, // face width as share of the photo height (for faceSize, main.js)
     features: faceFeatures(L),
+    // the face crop itself (stays in memory on this device): projected onto the voxel face (facefit.js)
+    photo: { pixels, size: CROP, L: L.map((q) => ({ x: q.x, y: q.y })), wb },
     wb, fixWB,
     colors: { skin: fixWB(skinMix), eye: fixWB(eyeCol), lip: fixWB(lip), brow: fixWB(brow), hair: fixWB(hairColor), beard: fixWB(mixColors(brow, hairColor)) },
     hair: hairInfo,

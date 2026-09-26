@@ -72,6 +72,7 @@ async function measureHead(avatar, face) {
   camera.lookAt(ex, cy, ez);
   renderer.render(scene, camera);
   const L = await detectLandmarks(renderer.domElement);
+  R.lastL = L; // for buildFaceMap
   if (!L) return null;
   const r = faceRatios(L);
   // absolute face width (m) / body height: pixel size at the cheek plane (~3 cm behind the eyes)
@@ -189,4 +190,102 @@ export async function fitFace(avatar, photo, measures, { rounds = 3 } = {}) {
 export async function modelRatios(avatar, face) {
   if (!R) setup(avatar.H);
   return measureHead(avatar, face);
+}
+
+// ---- face texture from the photo ("Snapchat filter" technique, all on this device) ----
+// The fitted model head is rendered once more and MediaPipe finds its 478 points. Every point
+// on the render corresponds to the same point on the photo. For a cube on the face: project it
+// into the render, map it to the photo (affine fit of all points + smooth local correction from the
+// nearest points) and take the photo color there. The photo's large-scale light and shadow is
+// divided out (blurred copy), so the voxel light does not shade the face twice.
+const OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149,
+  150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+export async function buildFaceMap(avatar, face, photo) {
+  if (!photo || !avatar.H) return null;
+  if (!R) setup(avatar.H);
+  const ratios = await measureHead(avatar, face);
+  const Lr = R.lastL;
+  if (!ratios || !Lr) return null;
+  const cam = R.camera;
+  cam.updateMatrixWorld();
+  const vp = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+  const Lp = photo.L, n = Math.min(468, Lr.length, Lp.length);
+  // affine map render -> photo (least squares)
+  const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], bx = [0, 0, 0], by = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const a = [Lr[i].x, Lr[i].y, 1];
+    for (let r = 0; r < 3; r++) { for (let c = 0; c < 3; c++) M[r][c] += a[r] * a[c]; bx[r] += a[r] * Lp[i].x; by[r] += a[r] * Lp[i].y; }
+  }
+  const ax = solve(M, bx, 1e-6), ay = solve(M, by, 1e-6);
+  const aff = (x, y) => [ax[0] * x + ax[1] * y + ax[2], ay[0] * x + ay[1] * y + ay[2]];
+  const res = [];
+  for (let i = 0; i < n; i++) { const q = aff(Lr[i].x, Lr[i].y); res.push([Lp[i].x - q[0], Lp[i].y - q[1]]); }
+  // local correction on a grid over the render (inverse distance weights of the 8 nearest points)
+  const G = 96, cell = SIZE / G, disp = new Float32Array((G + 1) * (G + 1) * 2);
+  for (let gy = 0; gy <= G; gy++) for (let gx = 0; gx <= G; gx++) {
+    const px = gx * cell, py = gy * cell, bd = new Array(8).fill(Infinity), bi = new Array(8).fill(0);
+    for (let i = 0; i < n; i++) { // keep the 8 nearest points
+      const d2 = (Lr[i].x - px) ** 2 + (Lr[i].y - py) ** 2;
+      if (d2 >= bd[7]) continue;
+      let k = 7;
+      while (k > 0 && bd[k - 1] > d2) { bd[k] = bd[k - 1]; bi[k] = bi[k - 1]; k--; }
+      bd[k] = d2; bi[k] = i;
+    }
+    let wx = 0, wy = 0, ws = 0;
+    for (let k = 0; k < 8; k++) { const w = 1 / (bd[k] + 4), i = bi[k]; wx += w * res[i][0]; wy += w * res[i][1]; ws += w; }
+    disp[(gy * (G + 1) + gx) * 2] = wx / ws; disp[(gy * (G + 1) + gx) * 2 + 1] = wy / ws;
+  }
+  const dispAt = (px, py) => {
+    const fx = Math.max(0, Math.min(G - 1e-3, px / cell)), fy = Math.max(0, Math.min(G - 1e-3, py / cell));
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0, o = [0, 0];
+    for (const [dx, dy, w] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
+      const k = ((y0 + dy) * (G + 1) + x0 + dx) * 2; o[0] += w * disp[k]; o[1] += w * disp[k + 1];
+    }
+    return o;
+  };
+  // face outline on the render (for the soft edge)
+  const oval = OVAL.map((i) => Lr[i]);
+  const edgeDist = (px, py) => { // > 0 inside, pixels to the outline
+    let inside = false, d = Infinity;
+    for (let i = 0, j = oval.length - 1; i < oval.length; j = i++) {
+      const a = oval[i], b = oval[j];
+      if ((a.y > py) !== (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+      const ex = b.x - a.x, ey = b.y - a.y, t = Math.max(0, Math.min(1, ((px - a.x) * ex + (py - a.y) * ey) / (ex * ex + ey * ey)));
+      d = Math.min(d, Math.hypot(px - a.x - ex * t, py - a.y - ey * t));
+    }
+    return inside ? d : -d;
+  };
+  // photo + blurred brightness (large-scale light) of the photo
+  const S = photo.size, P = photo.pixels, lumA = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i++) lumA[i] = 0.299 * P[i * 4] + 0.587 * P[i * 4 + 1] + 0.114 * P[i * 4 + 2];
+  const blur = boxBlur(boxBlur(lumA, S, 12), S, 12);
+  const faceWR = Math.hypot(Lr[234].x - Lr[454].x, Lr[234].y - Lr[454].y); // face width on the render
+  const skinRef = blur[Math.round(Lp[50].y) * S + Math.round(Lp[50].x)] || 120; // cheek brightness
+  const wb = photo.wb || [1, 1, 1];
+  const v = new THREE.Vector4();
+  return {
+    // color (0xRRGGBB) + weight 0..1 for a point on the model face (world coordinates of the build)
+    lookup(x, y, z) {
+      v.set(x, y, z, 1).applyMatrix4(vp);
+      const px = (v.x / v.w * 0.5 + 0.5) * SIZE, py = (1 - (v.y / v.w * 0.5 + 0.5)) * SIZE;
+      const e = edgeDist(px, py);
+      if (e <= 0) return null;
+      const q = aff(px, py), d = dispAt(px, py), u = q[0] + d[0], w = q[1] + d[1];
+      const xi = Math.round(u), yi = Math.round(w);
+      if (xi < 1 || yi < 1 || xi >= S - 1 || yi >= S - 1) return null;
+      let r = 0, g = 0, b = 0;
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const k = ((yi + j) * S + xi + i) * 4; r += P[k]; g += P[k + 1]; b += P[k + 2]; }
+      const light = Math.min(1.35, Math.max(0.75, Math.pow(skinRef / Math.max(20, blur[yi * S + xi]), 0.55))); // take out most of the photo's own shading
+      const c = [r / 9 * wb[0] * light, g / 9 * wb[1] * light, b / 9 * wb[2] * light].map((x) => Math.max(0, Math.min(255, Math.round(x))));
+      return { color: (c[0] << 16) | (c[1] << 8) | c[2], weight: 0.9 * Math.min(1, e / (0.08 * faceWR)) };
+    },
+  };
+}
+function boxBlur(src, S, r) {
+  const tmp = new Float32Array(S * S), out = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) { let acc = 0; for (let x = -r; x <= r; x++) acc += src[y * S + Math.max(0, Math.min(S - 1, x))];
+    for (let x = 0; x < S; x++) { tmp[y * S + x] = acc / (2 * r + 1); acc += src[y * S + Math.min(S - 1, x + r + 1)] - src[y * S + Math.max(0, x - r)]; } }
+  for (let x = 0; x < S; x++) { let acc = 0; for (let y = -r; y <= r; y++) acc += tmp[Math.max(0, Math.min(S - 1, y)) * S + x];
+    for (let y = 0; y < S; y++) { out[y * S + x] = acc / (2 * r + 1); acc += tmp[Math.min(S - 1, y + r + 1) * S + x] - tmp[Math.max(0, y - r) * S + x]; } }
+  return out;
 }

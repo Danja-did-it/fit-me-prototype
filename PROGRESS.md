@@ -275,3 +275,10 @@
   lines, outer edge. Starts at ~20 % body fat (men; women +8; more muscle = earlier), full at ~8 %. Bare skin only.
   At 1 cm cubes the lines were blotchy -> default cube size now 0.75 cm (details 0.375 / 0.25 cm): 98.5k cubes,
   ~430 ms build on desktop; 1 cm stays selectable ("schneller"). Accuracy all <= 1.3 cm. v26-muscle-definition.png.
+- Round 3 (v27): real face from the photo ("Snapchat filter" / face-swap technique, all on the device). After the face
+  fit the model head is rendered once more and MediaPipe finds its 478 points; each voxel face cube is projected into
+  that render and mapped to the photo (affine fit of all points + local correction from the 8 nearest points on a
+  96x96 grid) -> photo color with white balance; the photo's large-scale light is divided out (blurred copy, softened)
+  so the voxel light does not shade the face twice; soft edge at the face outline and toward the sides, max 90 %.
+  Painted brows / lips are dropped where the photo covers them; the drawn eyes stay (lively). Sample portrait: glasses,
+  wrinkles, moustache and brows appear, clearly recognizable. Cost: map ~0.3 s, build +10 ms.

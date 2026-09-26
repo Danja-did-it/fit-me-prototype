@@ -656,10 +656,13 @@ gl_Position = projectionMatrix * mvPosition;`;
           color = new THREE.Color(c.brow).lerp(new THREE.Color(0x201510), 0.5).getHex(); // lash line
         }
       }
+      // real face from the photo (brows, lips, beard shadow, skin tone): replaces the painted brows / lips
+      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal ? this.faceMap.lookup(x, y, z) : null;
+      const photoW = fm ? fm.weight * Math.min(1, (n.z - 0.2) / 0.3) : 0;
       // eyebrows: scanned shape (thickness, arch, start + end), else a thin default arch
       const ex = ax - E.x;
       const browColor = () => new THREE.Color(c.brow).lerp(new THREE.Color(c.skin), 0.25).getHex();
-      if (face.brow) {
+      if (photoW > 0.5) { /* brows come from the photo */ } else if (face.brow) {
         const u = ax / E.x, [bt, bb] = face.brow.at(u);
         const pad = 0.0019 * s; // at least ~2 cubes thick at the thin tail
         if (jn === 'head' && n.z > 0.05 && z > E.z - 0.006 * s && u > face.brow.u0 && u < face.brow.u1 &&
@@ -682,7 +685,8 @@ gl_Position = projectionMatrix * mvPosition;`;
         const mw = 0.024 * s * (this.body.face?.mouthWidth || 1);
         onLips = jn === 'head' && front && z > E.z - 0.005 && Math.abs(dy) < 0.009 * s && ax < mw * (1 - 0.5 * (dy / (0.011 * s)) ** 2);
       }
-      if (onLips) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
+      if (onLips && photoW <= 0.5) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
+      if (photoW > 0 && color !== c.hair) color = new THREE.Color(color).lerp(new THREE.Color(fm.color), photoW).getHex();
       // facial hair
       const lowFace = jn === 'head' && z > E.z - 0.075 * s && y < face.mouthY + 0.004 * s && ax < 0.075 * s;
       const must = jn === 'head' && ax < 0.03 * s && y > face.mouthY + 0.008 * s && y < face.noseY - 0.01 * s && z > E.z;
