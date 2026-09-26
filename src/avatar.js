@@ -1155,10 +1155,10 @@ vCube = position / (0.5 * vCubeSize);`;
     // game style afro (like the concept): taller than wide, clumpy outline, a fringe down to the shades
     const game = this.style === 'game', gAfro = game && st.cover === 'afro';
     const ox = this.grid.head; // x offset of the head cube grid
-    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.05 : 1);
+    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.15 : 1);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
-    const R = [0.083 * s * (gAfro ? 0.85 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
+    const R = [0.083 * s * (gAfro ? 1.0 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
     const chin = face.chinY, shoulder = W.shoulderL[1];
     let bottom = { nape: E.y - 0.045 * s, chin: chin - 0.005 * s, shoulder: shoulder - 0.14 * s, ear: E.y - 0.035 * s, top: E.y + 0.045 * s }[st.bottom];
     // real length from the hair scan (medium / long only)
