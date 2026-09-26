@@ -345,3 +345,15 @@
   * Tests (virtual person streamed as camera, light page so tracking runs at its real pace): 60 s empty room -> no
     photo, "Ich sehe dich nicht" 3x (15 s apart) then silent; person with a dropout every 7th frame -> no false "not
     seen", "Gut so" -> 3-2-1 -> photo, 6 spoken lines in total.
+
+## Iteration 15: "Voxel-Double" game look (user: target concept image docs/screenshots/target-voxel-double-concept.png)
+- New style "Voxel-Double (Game-Look)", default ("Realistisch" stays selectable): chunky 1.5 cm cubes (face 0.75 cm),
+  head 1.75x (grows up from the chin), neck 1.18x wider, sneakers 1.2x - done on the finished cubes (avatar.js
+  stylize), so measuring, fitting, face / clothes projection keep the real body.
+- Blocky muscle definition in this style (grooves one cube wide, stronger), baggy long pants (street style, wider below
+  the knee), bigger curly afro, softer lips.
+- Accessories (Individuell): sunglasses (lenses + bridge + arms, one cube layer), silver chain with pendant, watch on
+  the left wrist - painted on the surface + one extra cube layer, so they always sit on the body.
+- validate.mjs renders its virtual people in the realistic style (they must look like real people). Accuracy all
+  <= 1.6 cm. Screenshots v36-voxel-double.png, v36-voxel-double-face.png.
+- Not yet from the concept: pants logo, cap / hoodie / outfit shop, app screens (level/XP, plan, nutrition, stats).

@@ -12,6 +12,8 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForFunction(() => window.avatar?.H, null, { timeout: 60000 });
+// virtual people must look like real people (the Voxel-Double game style has a bigger head / baggy pants)
+await page.evaluate(() => { window.avatar.style = 'real'; window.avatar.voxel = 0.0075; });
 
 const result = await page.evaluate(async (people) => {
   const { runScan, applyScans, scene, camera, renderer } = window.fitme;

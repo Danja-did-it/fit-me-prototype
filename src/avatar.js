@@ -271,6 +271,7 @@ vCube = position / (0.5 * vCubeSize);`;
     this.fit = { muscle: 0.5, weight: 0.5, local: {} }; // set by the scan fit (fit.js)
     this.composition = { fat: 0, muscle: 0, training: 'mixed', groups: {}, tint: false };
     this.voxel = 0.01;
+    this.style = 'game'; // 'game' = Voxel-Double (bigger head, chunky cubes) | 'real'
     this.view = 'look';
     this.joints = {};
     this.lengths = { foot: 0.07, thigh: 0.45, calf: 0.43 };
@@ -455,7 +456,7 @@ vCube = position / (0.5 * vCubeSize);`;
       const isHead = (v) => this.vertDetail[v] && (this.vertJoint[v] === 'head' || this.vertJoint[v] === 'neck');
       // head + neck with the finest cubes (1/3 of the body size: 0.33 cm at 1 cm) for the face,
       // hands with half-size cubes
-      const Vh = V / 3;
+      const Vh = this.style === 'game' ? V / 2 : V / 3; // game style: chunkier face cubes
       passes.push([Vh, voxelize(pos, F, Vh, boxOf(isHead), (t) => triDetail[t] && isHead(F[t * 3]))]);
       // forearms + hands with half-size cubes (fine enough for fingers and forearm veins)
       for (const test of ['elbowL', 'elbowR', 'shoulderL', 'shoulderR'].map((j) => (v) => this.vertDetail[v] && this.vertJoint[v] === j)) {
@@ -545,6 +546,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
+    if (this.style === 'game') this.stylize(byJoint, worldOf, ctx);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
     const bySize = {};
@@ -670,8 +672,21 @@ vCube = position / (0.5 * vCubeSize);`;
           color = new THREE.Color(c.brow).lerp(new THREE.Color(0x201510), 0.5).getHex(); // lash line
         }
       }
+      // accessory: sunglasses (blocky shades like in voxel games) - lenses over both eyes, bridge, arms
+      const acc = look.acc || {};
+      if (acc.glasses && jn === 'head') {
+        const gx = ax - E.x, gy = y - E.y - 0.002 * s;
+        const lens = (gx / (0.025 * s)) ** 4 + (gy / (0.0135 * s)) ** 4;
+        const bridge = ax < E.x - 0.02 * s && Math.abs(gy - 0.005 * s) < 0.0028 * s && n.z > 0.3;
+        const arm = ax > 0.058 * s && Math.abs(gy - 0.007 * s) < 0.0028 * s && z < E.z + 0.005 * s && z > E.z - 0.075 * s;
+        if ((lens < 1 && n.z > 0.25) || bridge || arm) {
+          eyeDecal = false; special = null;
+          color = lens < 0.72 && !bridge && !arm ? (gy > 0.004 * s ? 0x252b36 : 0x14171c) : 0x0b0b0c; // lens with a light top edge, frame
+          result = { layers: 1, color };
+        }
+      }
       // real face from the photo (brows, lips, beard shadow, skin tone): replaces the painted brows / lips
-      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal ? this.faceMap.lookup(x, y, z) : null;
+      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal && !result ? this.faceMap.lookup(x, y, z) : null;
       const photoW = fm ? fm.weight * Math.min(1, (n.z - 0.2) / 0.3) : 0;
       // eyebrows: scanned shape (thickness, arch, start + end), else a thin default arch
       const ex = ax - E.x;
@@ -699,7 +714,7 @@ vCube = position / (0.5 * vCubeSize);`;
         const mw = 0.024 * s * (this.body.face?.mouthWidth || 1);
         onLips = jn === 'head' && front && z > E.z - 0.005 && Math.abs(dy) < 0.009 * s && ax < mw * (1 - 0.5 * (dy / (0.011 * s)) ** 2);
       }
-      if (onLips && photoW <= 0.5) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
+      if (onLips && photoW <= 0.5) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), this.style === 'game' ? (Math.abs(dy) < 0.0012 * s ? 0.35 : 0.65) : Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
       if (photoW > 0 && color !== c.hair) color = new THREE.Color(color).lerp(new THREE.Color(fm.color), photoW).getHex();
       // facial hair
       const lowFace = jn === 'head' && z > E.z - 0.075 * s && y < face.mouthY + 0.004 * s && ax < 0.075 * s;
@@ -759,6 +774,31 @@ vCube = position / (0.5 * vCubeSize);`;
         if (special === DETAIL.sole || special === DETAIL.sock) special = null;
       }
     }
+    // game style: long pants are baggy (street style) - extra cube layers, wider below the knee
+    if (this.style === 'game' && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn) && !result) {
+      result = { layers: /^knee/.test(jn) ? 2 : 1, color };
+    }
+    // accessories: chain around the neck (with a small pendant), watch on the left wrist
+    const acc = look.acc || {};
+    if (acc.chain && (jn === 'neck' || jn === 'chest')) {
+      const a = Math.atan2(x - W.neck[0], z - W.neck[2]), front = Math.max(0, Math.cos(a));
+      const yc = W.neck[1] - 0.035 * s - 0.075 * s * front ** 1.5;
+      const pend = front > 0.985 && y < yc && y > yc - 0.022 * s;
+      if ((Math.abs(y - yc) < 0.0045 * s && Math.hypot(x - W.neck[0], z - W.neck[2]) < 0.14 * s) || pend) {
+        color = hash(Math.round(x / 0.006), Math.round(y / 0.006), Math.round(z / 0.006), 21) > 0.5 ? 0xe4e7ec : 0xb9bec6;
+        special = null;
+        result = { layers: 1, color };
+      }
+    }
+    if (acc.watch && jn === 'elbowL' && !hand) {
+      const Wh = W.handL, We = W.elbowL, d = [Wh[0] - We[0], Wh[1] - We[1], Wh[2] - We[2]], dl = Math.hypot(...d);
+      const along = ((x - Wh[0]) * d[0] + (y - Wh[1]) * d[1] + (z - Wh[2]) * d[2]) / dl; // < 0 = before the wrist
+      if (along < -0.012 * s && along > -0.036 * s) {
+        const face = n.x > 0.55 && along < -0.017 * s && along > -0.031 * s; // on the back of the wrist (outside)
+        color = face ? 0xd8dce2 : 0x1a1c20; special = null;
+        result = { layers: 1, color };
+      }
+    }
     // veins on bare skin when the body fat is low
     if (!special && color === c.skin && this.fat && !head) {
       const k = this.veinAt(jn, x, y, z, n, hand, ctx);
@@ -768,7 +808,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     // muscle definition at low body fat: fine grooves between muscle groups, the six-pack
     // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
-    if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx);
+    if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size);
     if (special) out.copy(special); else out.set(color);
     // tint: where fat / muscle was added or removed
     if (this.composition.tint) {
@@ -779,6 +819,30 @@ vCube = position / (0.5 * vCubeSize);`;
     // eyes sit in the (darker) eye socket: lift them a little so the look stays lively
     out.multiplyScalar(eyeDecal ? (special === DETAIL.eyeWhite ? 1.7 : special === DETAIL.pupil ? 1 : 1.35) : shade * jitter);
     return result;
+  }
+
+  // Voxel-Double game style (like voxel avatars in games): bigger head, a bit thicker neck, chunkier
+  // shoes. Done on the finished cubes (positions spread out from a pivot, cubes grown by the same
+  // factor), so all measuring, fitting and painting keeps the real body.
+  stylize(byJoint, worldOf, ctx) {
+    const HEAD = 1.75, NECK = 1.18, FEET = 1.2;
+    const out = {};
+    for (const [key, list] of Object.entries(byJoint)) {
+      const [name, size] = key.split('|');
+      const jw = worldOf[name];
+      let k = [1, 1, 1], pivot = null;
+      if (name === 'head') { k = [HEAD, HEAD, HEAD]; pivot = [jw[0], ctx.face.chinY, jw[2]]; } // grows up from the chin
+      else if (name === 'neck') { k = [NECK, 1, NECK]; pivot = jw; }
+      else if (name === 'ankleL' || name === 'ankleR') { k = [FEET, FEET, FEET]; pivot = [jw[0], 0, jw[2]]; }
+      if (!pivot) { const o = (out[key] ||= []); for (const r of list) o.push(r); continue; }
+      const o = (out[name + '|' + +size * Math.max(...k)] ||= []);
+      for (const r of list) {
+        const w = [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]].map((v, i) => pivot[i] + (v - pivot[i]) * k[i]);
+        o.push({ ...r, p: [w[0] - jw[0], w[1] - jw[1], w[2] - jw[2]] });
+      }
+    }
+    for (const key of Object.keys(byJoint)) delete byJoint[key];
+    Object.assign(byJoint, out);
   }
 
   // Shoes as their own volume (not just paint on the bare foot, which showed the toes): the foot's
@@ -832,7 +896,7 @@ vCube = position / (0.5 * vCubeSize);`;
     const { face, W, s } = ctx;
     const look = this.body.look.hair, E = face.eye;
     const st = HAIR_STYLES[look.style] || HAIR_STYLES.short;
-    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1));
+    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (this.style === 'game' && st.curly ? 1.35 : 1);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
     const R = [0.083 * s, 0.108 * s + top, 0.103 * s];   // skull radii (just under the hair)
@@ -904,7 +968,7 @@ vCube = position / (0.5 * vCubeSize);`;
       }
       if (st.cover === 'top' && (Math.abs(x) > 0.066 * s || (frontZ < -0.02 * s && y < E.y + 0.075 * s))) return false; // undercut: top only
       if (st.quiff) t += 0.022 * s * Math.min(1, Math.max(0, frontZ / R[2] + 0.1)) * Math.min(1, Math.max(0, (y - E.y - 0.04 * s) / (0.05 * s)));
-      if (st.curly) t *= 0.85 + 0.3 * hash(Math.round(x / (0.012 * s)), Math.round(y / (0.012 * s)), Math.round(z / (0.012 * s)), 7);
+      if (st.curly) { const cs = (this.style === 'game' ? 0.02 : 0.012) * s; t *= 0.8 + 0.4 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
       // strand clumps: every strand lies a little higher or lower -> light and shadow show the strands
       else if (st.thick >= 0.009) t *= 0.8 + 0.3 * hash(strandOf(x, z), 8, 1, 2);
       const r = rad(x, y, z);
@@ -962,28 +1026,29 @@ vCube = position / (0.5 * vCubeSize);`;
   }
 
   // Light/shadow factor for muscle definition (1 = none)
-  definition(x, y, z, n, groove, label, ctx) {
+  definition(x, y, z, n, groove, label, ctx, size = 0.005) {
     const lean = this.fat.percent - (1 - (this.person.gender ?? 0.5)) * 8 - 3 * Math.max(0, this.composition.muscle);
     const def = Math.min(1, Math.max(0, (20 - lean) / 12)); // from ~20 % (men) on, full at ~8 %
     if (def <= 0) return 1;
     const { W, s } = ctx;
-    const w = 0.006 * s;
-    let g = groove < 0.03 ? Math.exp(-((groove / w) ** 2)) : 0;
+    // game style: chunky cubes -> grooves one cube wide and stronger (blocky abs / chest like voxel games)
+    const game = this.style === 'game', w = game ? Math.max(0.006 * s, 0.8 * size) : 0.006 * s, lw = game ? Math.max(1, (0.8 * size) / (0.005 * s)) : 1;
+    let g = groove < 0.03 + (game ? size : 0) ? Math.exp(-((groove / w) ** 2)) : 0;
     // six-pack: only on the front of the belly
     if (GROUP_IDS[label] === 'abs' && n.z > 0.5) {
       const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
       const ax = Math.abs(x), navel = yh + 0.12 * s, top = ys - 0.17 * s;
       if (ax < 0.078 * s && y > yh - 0.01 * s && y < top) {
-        g = Math.max(g, Math.exp(-((ax / (0.0045 * s)) ** 2)));                 // linea alba
+        g = Math.max(g, Math.exp(-((ax / (0.0045 * s * lw)) ** 2)));            // linea alba
         for (let i = 0; i < 3; i++) {                                           // tendon lines, slightly zig-zag
           const ly = navel + (i + (i ? 0.1 : 0)) * ((top - navel) / 3) + 0.006 * s * (ax / (0.078 * s)) * (i % 2 ? -1 : 1);
-          if (y > navel - 0.01 * s) g = Math.max(g, 0.85 * Math.exp(-(((y - ly) / (0.005 * s)) ** 2)));
+          if (y > navel - 0.01 * s) g = Math.max(g, 0.85 * Math.exp(-(((y - ly) / (0.005 * s * lw)) ** 2)));
         }
-        g = Math.max(g, Math.exp(-(((ax - 0.08 * s) / (0.006 * s)) ** 2))); // outer edge of the six-pack
+        g = Math.max(g, Math.exp(-(((ax - 0.08 * s) / (0.006 * s * lw)) ** 2))); // outer edge of the six-pack
       }
     }
     const belly = groove > 0.012 ? Math.min(1, (groove - 0.012) / 0.02) : 0;
-    return (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
+    return game ? (1 - 0.36 * def * g) * (1 + 0.07 * def * belly) : (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
   }
 
   // How strongly a vein shows at this skin point (0 = none .. 1)

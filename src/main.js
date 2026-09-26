@@ -559,6 +559,7 @@ function showLook(body) {
   $('bangs').checked = !!L.hair.bangs;
   $('beard').value = L.beard;
   $('mustache').checked = !!L.mustache;
+  for (const [id, k] of [['accGlasses', 'glasses'], ['accChain', 'chain'], ['accWatch', 'watch']]) $(id).checked = !!L.acc?.[k];
   const o = L.outfit;
   $('top').value = o.top === 'none' ? 'none' : o.sleeves === 'long' ? 'long' : o.sleeves === 'none' ? 'tank' : 'short';
   $('bottoms').value = o.bottoms;
@@ -579,6 +580,7 @@ function updateLook() {
     hair: { style: $('hairStyle').value, bangs: $('bangs').checked },
     beard: $('beard').value,
     mustache: $('mustache').checked,
+    acc: { glasses: $('accGlasses').checked, chain: $('accChain').checked, watch: $('accWatch').checked },
     outfit: {
       top: $('top').value === 'none' ? 'none' : 'shirt',
       sleeves: { none: 'none', short: 'short', long: 'long', tank: 'none' }[$('top').value],
@@ -592,7 +594,14 @@ function updateLook() {
   if (manual.colors.hair !== avatar.body.colors.hair) manual.colors.beard = manual.colors.brow = manual.colors.hair;
   applyScans();
 }
-for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accChain', 'accWatch', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+// Style: Voxel-Double (game look, chunky 1.5 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
+function applyStyle() {
+  avatar.style = $('style').value;
+  $('voxel').value = avatar.style === 'game' ? '0.015' : '0.0075';
+  updateComposition();
+}
+$('style').addEventListener('change', applyStyle);
 window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE }; // for scripts/validate.mjs
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
