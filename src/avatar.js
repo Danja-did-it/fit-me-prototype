@@ -573,7 +573,12 @@ vCube = position / (0.5 * vCubeSize);`;
         const gd = this.grooveDist, groove = gd[a] * w0 + gd[b] * cb.u + gd[c] * cb.v; // distance to a muscle border
         const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, offX, ctx });
         const jw = worldOf[jn];
-        (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nrm.clone(), v: vMain });
+        // game style: the face keeps more of the smooth head normal (a longer normal weighs more in the
+        // shader's mix), so it reads flat and even instead of blotchy steps
+        // (the front of the face is lit like a flat plane: normal pulled toward straight ahead)
+        const nn = game && jn === 'head' && !isEye && nrm.z > 0.2
+          ? nrm.clone().lerp(new THREE.Vector3(0, 0, 1), nrm.z > 0.5 ? 0.6 : 0.3).normalize().multiplyScalar(2.5) : nrm.clone();
+        (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nn, v: vMain });
         if (res) extra.push({ jn, size, offX, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
       }
     }
@@ -624,6 +629,8 @@ vCube = position / (0.5 * vCubeSize);`;
       mesh.name = 'cubes-' + size;
       mesh.customDepthMaterial = this.depthMaterial; // skinned shadows
       mesh.castShadow = mesh.receiveShadow = true;
+      // game style: no cast shadows on the head (the shades / hair shadows made the flat face blotchy)
+      if (game && list.some((r) => r.jn === 'head')) mesh.receiveShadow = false;
       mesh.frustumCulled = false; // cubes move on the GPU; bounds would be wrong
       list.forEach((r, i) => { mesh.setMatrixAt(i, m4.makeTranslation(r.w[0], r.w[1], r.w[2])); mesh.setColorAt(i, r.c); });
       mesh.instanceMatrix.needsUpdate = true;
@@ -678,7 +685,7 @@ vCube = position / (0.5 * vCubeSize);`;
 
     let color = c.skin, special = null, eyeDecal = false;
     const ax = Math.abs(x), front = n.z > 0.25;
-    if (isEye) {
+    if (isEye && !game) { // (game style: the eyeballs are painted like the face, see below)
       // eyeball: direction from the eye center -> pupil / iris / white
       const ec = x > 0 ? face.eyeL : face.eyeR;
       const d = Math.hypot(x - ec[0], y - ec[1], z - ec[2]) || 1;
@@ -706,10 +713,27 @@ vCube = position / (0.5 * vCubeSize);`;
           color = new THREE.Color(c.skin).lerp(new THREE.Color(c.hair), 0.25 + 0.45 * k).getHex();
         }
       }
+      let onLips = false, photoW = 0, fm = null;
+      const ec = x > 0 ? face.eyeL : face.eyeR;
+      if (game) {
+        // Voxel-Double face, flat and drawn in whole cubes like a voxel game character (the cube grid has a
+        // column on the face center): eyes = a 1x2 dark pupil block with one white catch light (no white of
+        // the eye), 4-cube brows in the hair color, the mouth a single closed row of 3 cubes, a touch darker
+        // than the skin. The row under the sunglasses lies in their shadow.
+        const col = cellX(x), row = cellY(y), ecol = cellX(ec[0]), erow = cellY(E.y), out1 = x > 0 ? 1 : -1;
+        const onFace = jn === 'head' && z > E.z - 0.012 * s && n.z > 0.2;
+        if (onFace) {
+          const glasses = look.acc?.glasses;
+          if (!glasses && col === ecol && (row === erow || row === erow + 1)) special = new THREE.Color(0x1a1410);
+          else if (!glasses && col === ecol + out1 && row === erow + 1) special = new THREE.Color(0xf4f1ea);
+          else if (!glasses && row === erow + 3 && [-1, 0, 1, 2].includes((col - ecol) * out1)) color = c.brow;
+          else if (row === cellY(face.mouthY) && Math.abs(col - cellX(0)) <= 1) color = new THREE.Color(c.skin).multiplyScalar(0.6).getHex();
+          if (glasses && row === erow - 2 && ax < E.x + 0.04 * s) shade *= 0.85; // shadow under the shades
+        }
+      } else {
       // Eyes as a clean almond-shaped drawing on the face surface (the real eye opening is only
       // ~2 cubes high at 0.5 cm, so the eyeball behind it would barely show): white, iris in the
       // scanned eye color, pupil, a small catch light, and a fine lash line along the upper edge.
-      const ec = x > 0 ? face.eyeL : face.eyeR;
       const FM = this.body.face || {}, es = FM.eyeSize || 1, eo = FM.eyeOpen || 1;
       const edx = (x - ec[0]) * (x > 0 ? 1 : -1), edy = y - ec[1] - 0.001 * s;
       const ea = 0.0162 * s * es, eb = 0.0072 * s * es * Math.min(1.25, Math.max(0.8, eo)); // ~12 % larger than real: playful, readable
@@ -728,8 +752,8 @@ vCube = position / (0.5 * vCubeSize);`;
         }
       }
       // real face from the photo (brows, lips, beard shadow, skin tone): replaces the painted brows / lips
-      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal && !result ? this.faceMap.lookup(x, y - this.chibiShift, z) : null; // the photo map knows the real head position
-      const photoW = fm ? fm.weight * Math.min(1, (n.z - 0.2) / 0.3) : 0;
+      fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal && !result ? this.faceMap.lookup(x, y - this.chibiShift, z) : null; // the photo map knows the real head position
+      photoW = fm ? fm.weight * Math.min(1, (n.z - 0.2) / 0.3) : 0;
       // eyebrows: scanned shape (thickness, arch, start + end), else a thin default arch
       const ex = ax - E.x;
       const browColor = () => new THREE.Color(c.brow).lerp(new THREE.Color(c.skin), 0.25).getHex();
@@ -745,7 +769,6 @@ vCube = position / (0.5 * vCubeSize);`;
       }
       // lips: scanned corners, lip heights and cupid's bow; else a default lens shape
       const dy = y - face.mouthY;
-      let onLips;
       if (face.lips) {
         const Lp = face.lips, t = ax / Lp.corner;
         // upper lip: highest at the cupid's bow peaks, small dip in the middle; lower lip: round
@@ -756,8 +779,9 @@ vCube = position / (0.5 * vCubeSize);`;
         const mw = 0.024 * s * (this.body.face?.mouthWidth || 1);
         onLips = jn === 'head' && front && z > E.z - 0.005 && Math.abs(dy) < 0.009 * s && ax < mw * (1 - 0.5 * (dy / (0.011 * s)) ** 2);
       }
-      if (onLips && photoW <= 0.5) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), this.style === 'game' ? (Math.abs(dy) < 0.0012 * s ? 0.35 : 0.65) : Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
+      if (onLips && photoW <= 0.5) color = new THREE.Color(c.lip).lerp(new THREE.Color(c.skin), Math.abs(dy) < 0.0012 * s ? 0 : 0.2).getHex();
       if (photoW > 0 && color !== c.hair) color = new THREE.Color(color).lerp(new THREE.Color(fm.color), photoW).getHex();
+      }
       // facial hair
       const lowFace = jn === 'head' && z > E.z - 0.075 * s && y < face.mouthY + 0.004 * s && ax < 0.075 * s;
       const must = jn === 'head' && ax < 0.03 * s && y > face.mouthY + 0.008 * s && y < face.noseY - 0.01 * s && z > E.z;
@@ -872,7 +896,7 @@ vCube = position / (0.5 * vCubeSize);`;
     if (special) out.copy(special); else out.set(color);
     // game style: a little variation per cube (skin: value and a touch of hue, pants a bit more), so the
     // surfaces read as single cubes like in the concept
-    if (game && !special && (color === c.skin || color === c.shorts)) {
+    if (game && !special && ((color === c.skin && !head) || color === c.shorts)) {
       const h1 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 31), h2 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 32);
       if (color === c.skin) out.offsetHSL((h2 - 0.5) * 0.012, 0, 0).multiplyScalar(0.97 + 0.06 * h1);
       else out.multiplyScalar(0.92 + 0.16 * h1);
@@ -892,6 +916,7 @@ vCube = position / (0.5 * vCubeSize);`;
   // both eyes, 2 cubes thick, slightly lighter top row, arms back to the ears. Straight edges - painting
   // them on the curved face made them look ragged.
   addGlasses(byJoint, worldOf, ctx, V) {
+    if (this.style === 'game') return this.addWayfarers(byJoint, worldOf, ctx, V);
     const { face, s } = ctx, E = face.eye, hw = worldOf.head;
     const list = (byJoint['head|' + V] ||= []);
     // front of the face over the eyes: highest z of the head cubes in that area
@@ -921,6 +946,44 @@ vCube = position / (0.5 * vCubeSize);`;
     }
   }
 
+  // Voxel-Double sunglasses (game style), built in whole head cubes like chunky wayfarers: two eyepieces,
+  // 3 cubes high, each with a near-black frame (top row + inner and outer column, 2 cubes in front of the
+  // face) around a recessed dark lens (1 cube in front) with one grey catch light, a 1-cube bridge in the
+  // top row only (skin shows below it), temples straight back to the ears. As wide as the face at eye height.
+  addWayfarers(byJoint, worldOf, ctx, V) {
+    const { face, s } = ctx, E = face.eye, hw = worldOf.head, ox = this.grid.head;
+    const list = (byJoint['head|' + V] ||= []);
+    const colX = (i) => (i + 0.5) * V + ox, rowY = (j) => (j + 0.5) * V; // cube center of column i / row j
+    const cX = Math.floor((0 - ox) / V), erow = Math.floor(E.y / V);    // center column, eye row
+    // front of the face over the eyes and the face half width (in columns) at eye height
+    let zf = -Infinity, half = 0;
+    for (const [key, l] of Object.entries(byJoint)) {
+      if (!key.startsWith('head|')) continue;
+      for (const r of l) {
+        if (r.v === undefined) continue; // skin cubes only (not hair)
+        const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2];
+        if (Math.abs(y - E.y) > 1.5 * V || z < E.z - 0.03 * s) continue;
+        if (Math.abs(x) < E.x + 0.02 * s) zf = Math.max(zf, z);
+        half = Math.max(half, Math.abs(Math.floor((x - ox) / V) - cX));
+      }
+    }
+    if (!Number.isFinite(zf)) return;
+    const kz = Math.floor(zf / V), zAt = (k) => (k + 0.5) * V;
+    const frame = new THREE.Color(0x0b0b0b), lens = new THREE.Color(0x1c1c1c), glint = new THREE.Color(0x3a3a3a), n = new THREE.Vector3(0, 0, 1);
+    const add = (i, j, k, c, nn = n) => list.push({ p: [colX(cX + i) - hw[0], rowY(j) - hw[1], zAt(k) - hw[2]], c: c.clone(), n: nn });
+    const w = Math.max(4, Math.min(6, half)); // eyepiece width in columns (outermost column = frame)
+    add(0, erow + 1, kz + 1, frame); add(0, erow + 1, kz + 2, frame); // bridge
+    for (const sx of [-1, 1]) {
+      for (let a = 1; a <= w; a++) for (let j = erow - 1; j <= erow + 1; j++) {
+        const isFrame = j === erow + 1 || a === 1 || a === w;
+        if (isFrame) { add(sx * a, j, kz + 1, frame); add(sx * a, j, kz + 2, frame); }
+        else add(sx * a, j, kz + 1, a === 2 && j === erow ? glint : lens);
+      }
+      // temples: from the outer frame column straight back toward the ears
+      for (let k = kz; zAt(k) > zf - 0.085 * s; k--) add(sx * w, erow + 1, k, frame, new THREE.Vector3(sx, 0, 0));
+    }
+  }
+
   // Voxel-Double proportions (game avatars are compact: short legs, short torso, short arms, big head).
   // The real, scanned body is squeezed in height piece by piece, joints too, so animation and all
   // painting stay consistent; the head is only moved down (the photo face map is corrected by
@@ -938,7 +1001,29 @@ vCube = position / (0.5 * vCubeSize);`;
     const W2 = {};
     for (const [k, w] of Object.entries(W)) W2[k] = [w[0], /^(shoulder|elbow|hand)/.test(k) ? arm(w[1]) : f(w[1]), w[2]];
     this.chibiShift = f(ys) - ys;
+    this.flattenFace(out, W2);
     return { pos: out, W: W2 };
+  }
+
+  // Flat voxel-game face: nose and lips may stand at most ~1 head cube in front of the face plane beside
+  // them (measured per height on the cheeks next to the nose). No sculpted nose, no dark cavities.
+  flattenFace(pos, W) {
+    const s = this.body.height / 1.75, Vh = this.voxel >= 0.0075 ? this.voxel / 2 : this.voxel;
+    const ey = (W.eyeL[1] + W.eyeR[1]) / 2, y0 = ey - 0.1 * s, y1 = ey + 0.005 * s, bin = 0.005;
+    const isHead = (v) => this.vertJoint[v] === 'head';
+    const ref = new Map(); // height bin -> front of the cheeks beside the nose / mouth
+    for (let v = 0; v < this.H.N; v++) {
+      const x = Math.abs(pos[v * 3]), y = pos[v * 3 + 1];
+      if (!isHead(v) || y < y0 || y > y1 || x < 0.03 * s || x > 0.04 * s) continue;
+      const b = Math.floor(y / bin);
+      ref.set(b, Math.max(ref.get(b) ?? -Infinity, pos[v * 3 + 2]));
+    }
+    for (let v = 0; v < this.H.N; v++) {
+      const x = Math.abs(pos[v * 3]), y = pos[v * 3 + 1];
+      if (!isHead(v) || y < y0 || y > y1 || x >= 0.03 * s) continue;
+      const b = Math.floor(y / bin), zr = ref.get(b) ?? ref.get(b - 1) ?? ref.get(b + 1);
+      if (zr != null) pos[v * 3 + 2] = Math.min(pos[v * 3 + 2], zr + 0.7 * Vh);
+    }
   }
 
   // Voxel-Double game style (like voxel avatars in games): bigger head, a bit thicker neck, chunkier
