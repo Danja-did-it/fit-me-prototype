@@ -891,7 +891,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     // muscle definition at low body fat: fine grooves between muscle groups, the six-pack
     // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
-    if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size);
+    if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size, q.offX, jn);
     // game style crease shadows: the neck under the big head, the skin row just above the waistband
     if (game && !special && color === c.skin) {
       if (jn === 'neck') shade *= 0.7;
@@ -993,7 +993,7 @@ vCube = position / (0.5 * vCubeSize);`;
   // painting stay consistent; the head is only moved down (the photo face map is corrected by
   // chibiShift) and made bigger later on the finished cubes (stylize).
   chibify(pos, W) {
-    const KL = 0.72, KT = 0.85, KA = 0.8;
+    const KL = 0.72, KT = 0.85, KA = 0.56;
     const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
     const f = (y) => (y < yh ? y * KL : y < ys ? yh * KL + (y - yh) * KT : yh * KL + (ys - yh) * KT + (y - ys));
     const arm = (y) => (y < ys ? f(ys) - (ys - y) * KA : f(y));
@@ -1005,6 +1005,19 @@ vCube = position / (0.5 * vCubeSize);`;
     const W2 = {};
     for (const [k, w] of Object.entries(W)) W2[k] = [w[0], /^(shoulder|elbow|hand)/.test(k) ? arm(w[1]) : f(w[1]), w[2]];
     this.chibiShift = f(ys) - ys;
+    // arms a little away from the body (rigid turn about the shoulder, so they stay straight and blocky):
+    // the hands hang beside the pants, not on them
+    const ARM_TURN = 0.105; // ~6 deg
+    for (const S of ['L', 'R']) {
+      const sh = W2['shoulder' + S], a = S === 'L' ? ARM_TURN : -ARM_TURN, co = Math.cos(a), si = Math.sin(a);
+      const turn = (x, y) => { const dx = x - sh[0], dy = y - sh[1]; return [sh[0] + dx * co - dy * si, sh[1] + dx * si + dy * co]; };
+      for (let v = 0; v < this.H.N; v++) {
+        const j = this.vertJoint[v];
+        if (j !== 'shoulder' + S && j !== 'elbow' + S) continue;
+        [out[v * 3], out[v * 3 + 1]] = turn(out[v * 3], out[v * 3 + 1]);
+      }
+      for (const k of ['elbow' + S, 'hand' + S]) { const [nx, ny] = turn(W2[k][0], W2[k][1]); W2[k] = [nx, ny, W2[k][2]]; }
+    }
     this.flattenFace(out, W2);
     return { pos: out, W: W2 };
   }
@@ -1034,20 +1047,25 @@ vCube = position / (0.5 * vCubeSize);`;
   // shoes. Done on the finished cubes (positions spread out from a pivot, cubes grown by the same
   // factor), so all measuring, fitting and painting keeps the real body.
   stylize(byJoint, worldOf, ctx) {
-    const HEAD = 2.4, NECK = 1.25, FEET = 1.4, ARM = 1.2;
+    const HEAD = 2.4, NECK = 1.25, FEET = 1.4, UPPER = 1.4, FORE = 1.25, DELT = 1.15;
     const out = {};
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
       const jw = worldOf[name];
       let k = [1, 1, 1], pivot = null;
       if (name === 'head') { k = [HEAD * 1.08, HEAD, HEAD]; pivot = [jw[0], ctx.face.chinY, jw[2]]; } // grows up from the chin, a bit boxier
-      else if (/^(shoulder|elbow)[LR]$/.test(name)) { k = [ARM, 1, ARM]; pivot = jw; } // thicker arms
+      else if (/^shoulder[LR]$/.test(name)) { k = [UPPER, 1, UPPER]; pivot = jw; } // thick upper arms
+      else if (/^elbow[LR]$/.test(name)) { k = [FORE, 1, FORE]; pivot = jw; }     // and forearms
       else if (name === 'neck') { k = [NECK, 1, NECK]; pivot = jw; }
       else if (name === 'ankleL' || name === 'ankleR') { k = [FEET, FEET, FEET]; pivot = [jw[0], 0, jw[2]]; }
       if (!pivot) { const o = (out[key] ||= []); for (const r of list) o.push(r); continue; }
-      const o = (out[name + '|' + +size * Math.max(...k)] ||= []);
+      // deltoids: the outer upper arm just below the shoulder joint is a bit wider still (round, wider
+      // than the chest); the cubes of the upper arm are sized for that
+      const delt = /^shoulder[LR]$/.test(name);
+      const o = (out[name + '|' + +size * Math.max(...k) * (delt ? DELT : 1)] ||= []);
       for (const r of list) {
-        const w = [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]].map((v, i) => pivot[i] + (v - pivot[i]) * k[i]);
+        const kk = delt && r.p[1] > -0.07 * ctx.s && r.p[0] * Math.sign(jw[0]) > 0 ? [k[0] * DELT, k[1], k[2]] : k;
+        const w = [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]].map((v, i) => pivot[i] + (v - pivot[i]) * kk[i]);
         o.push({ ...r, p: [w[0] - jw[0], w[1] - jw[1], w[2] - jw[2]] });
       }
     }
@@ -1277,11 +1295,12 @@ vCube = position / (0.5 * vCubeSize);`;
   }
 
   // Light/shadow factor for muscle definition (1 = none)
-  definition(x, y, z, n, groove, label, ctx, size = 0.005) {
+  definition(x, y, z, n, groove, label, ctx, size = 0.005, offX = 0, jn = '') {
     const lean = this.fat.percent - (1 - (this.person.gender ?? 0.5)) * 8 - 3 * Math.max(0, this.composition.muscle);
     const def = Math.min(1, Math.max(0, (20 - lean) / 12)); // from ~20 % (men) on, full at ~8 %
     if (def <= 0) return 1;
     const { W, s } = ctx;
+    if (this.style === 'game') return this.gameDefinition(x, y, n, groove, label, ctx, size, offX, Math.min(1, def / 0.9), jn);
     // game style: chunky cubes -> grooves one cube wide and stronger (blocky abs / chest like voxel games)
     const game = this.style === 'game', w = game ? Math.max(0.006 * s, 0.8 * size) : 0.006 * s, lw = game ? Math.max(1, (0.8 * size) / (0.005 * s)) : 1;
     let g = groove < 0.03 + (game ? size : 0) ? Math.exp(-((groove / w) ** 2)) : 0;
@@ -1300,6 +1319,33 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     const belly = groove > 0.012 ? Math.min(1, (groove - 0.012) / 0.02) : 0;
     return game ? (1 - 0.5 * def * g) * (1 + 0.1 * def * belly) : (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
+  }
+
+  // Game style muscle definition in whole cubes (like voxel game characters): grooves are single dark cube
+  // lines, muscle blocks a bit lighter. The chibi torso is short, so the six-pack is laid out in cube rows
+  // below the lower edge of the chest muscle: block, groove, block, groove, block, groove (navel line);
+  // columns: center groove (linea alba), 2 block columns per side, the outer edge column dark.
+  gameDefinition(x, y, n, groove, label, ctx, size, offX, d, jn) {
+    const { W, s } = ctx, ax = Math.abs(x);
+    const cx = (v) => Math.floor((v - offX) / size), cy = (v) => Math.floor(v / size);
+    const dark = 1 - 0.4 * d, lit = 1 + 0.12 * d;
+    let f = groove < 0.55 * size ? 1 - 0.3 * d : 1; // other muscle borders (deltoid / biceps ...): one cube
+    const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, pecY = ys - 0.11 * s;
+    const torso = /^(spine|chest|hips)$/.test(jn) || GROUP_IDS[label] === 'abs' || GROUP_IDS[label] === 'chest';
+    if (!torso) return f;
+    // lower edge of the chest muscle: an arc, lowest in the middle; the row above it catches the light
+    if (n.z > 0.4 && ax < 0.11 * s) {
+      const py = pecY + 0.03 * s * (ax / (0.1 * s)) ** 2;
+      if (cy(y) === cy(py)) return Math.min(f, 1 - 0.42 * d);
+      if (cy(y) === cy(py) + 1) return f * (1 + 0.1 * d);
+    }
+    // six-pack
+    const row = cy(pecY) - cy(y), col = Math.abs(cx(x) - cx(0)), edgeCol = Math.abs(cx(0.08 * s) - cx(0));
+    if (n.z > 0.5 && row >= 1 && row <= 6 && col <= edgeCol && y > ctx.waistY) {
+      const grooveHere = col === 0 || col === edgeCol || row % 2 === 0;
+      f = grooveHere ? Math.min(f, dark) : f * lit;
+    }
+    return f;
   }
 
   // How strongly a vein shows at this skin point (0 = none .. 1)
