@@ -99,6 +99,18 @@ export function faceRatios(L) {
     lipUpper: dist(L[0], L[13]) / fh,
     lipLower: dist(L[14], L[17]) / fh,
     chin: dist(L[17], L[152]) / fh,
+    // face outline at 4 heights (cheek -> chin): the jaw shape
+    cheekLow: dist(L[132], L[361]) / fw,
+    jawMid: dist(L[58], L[288]) / fw,
+    jawLow: dist(L[136], L[365]) / fw,
+    chinW: dist(L[149], L[378]) / fw,
+    // heights: forehead, brows above the eyes, whole mouth
+    foreheadH: ((L[159].y + L[386].y) / 2 - L[10].y) / fh,
+    browH: ((L[159].y + L[386].y) / 2 - (L[105].y + L[334].y) / 2) / fh,
+    mouthH: dist(L[0], L[17]) / fh,
+    // depth (MediaPipe z, smaller = closer to the camera): nose tip and chin in front of the cheeks
+    noseDepth: ((L[234].z + L[454].z) / 2 - L[1].z) / fw,
+    chinDepth: ((L[234].z + L[454].z) / 2 - L[152].z) / fw,
   };
 }
 // Where brows and lips sit, for painting them onto the avatar: x in units of half the eye
@@ -132,7 +144,7 @@ export async function detectLandmarks(canvas) {
   const { face } = await loadModels();
   const r = face.detect(canvas);
   if (!r.faceLandmarks?.length) return null;
-  return r.faceLandmarks[0].map((p) => ({ x: p.x * canvas.width, y: p.y * canvas.height }));
+  return r.faceLandmarks[0].map((p) => ({ x: p.x * canvas.width, y: p.y * canvas.height, z: p.z * canvas.width }));
 }
 
 // Analyze the face on the front photo. Returns null if no face was found.
@@ -148,7 +160,7 @@ export async function analyzeFace(image, pose) {
 
   const fr = face.detect(crop);
   if (!fr.faceLandmarks?.length) return null;
-  const L = fr.faceLandmarks[0].map((p) => ({ x: p.x * CROP, y: p.y * CROP }));
+  const L = fr.faceLandmarks[0].map((p) => ({ x: p.x * CROP, y: p.y * CROP, z: p.z * CROP }));
 
   const hr = hair.segment(crop);
   const hairMask = hr.categoryMask.getAsUint8Array().slice();
@@ -292,6 +304,7 @@ export async function analyzeFace(image, pose) {
   return {
     measures: m,
     ratios,
+    faceWidthImg: (fw / CROP) * box.size / h, // face width as share of the photo height (for faceSize, main.js)
     features: faceFeatures(L),
     wb, fixWB,
     colors: { skin: fixWB(skinMix), eye: fixWB(eyeCol), lip: fixWB(lip), brow: fixWB(brow), hair: fixWB(hairColor), beard: fixWB(mixColors(brow, hairColor)) },

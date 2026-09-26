@@ -89,3 +89,8 @@ MediaPipe's shoulder / elbow points sit ~1.5-2 cm inside the joints; the limb ce
 | v20 | 1.0 | 0.4 | 0.9 | 0.8 | 0.4 | 0.6 | 1.0 | 0.5 | 0.2 | **0.7** | 0.7 |
 
 Remaining +0.6 cm chest bias: the camera at hip height looks up at the chest (not modelled).
+
+## v23: face surface
+
+8 random virtual faces, mean distance of the face surface (front view, mm): average face 13.9, old estimate 15.3,
+new fit (21 measures, 22 shapes, 3 Gauss-Newton rounds, mild prior) 8.7.

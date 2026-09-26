@@ -13,7 +13,7 @@ import { DEFAULT_BODY } from './avatar.js';
 const isPerson = (mask, x, y) => mask.data[y * mask.width + x] > 0.5;
 
 // Top and bottom row of the silhouette (rows with at least a few person pixels)
-function verticalExtent(mask) {
+export function verticalExtent(mask) {
   let top = -1, bottom = -1;
   for (let y = 0; y < mask.height; y++) {
     let n = 0;

@@ -28,5 +28,6 @@ Screenshots: `docs/screenshots/`.
 | v20 | 26.09.2026 | Brusttiefe: Fehler 1,2 → 0,7 cm (Perspektive des Seitenfotos wird am Modell nachgebildet) – alle Körpermaße jetzt ≤ 1 cm | – |
 | v21 | 26.09.2026 | Geschlossenere Knie und Ellbogen beim Beugen (Würfel werden beim Skinning nicht mehr gestaucht) | v21-squat-knee.png |
 | v22 | 26.09.2026 | 11 Frisuren (Glatze, Buzzcut, Kurz, Fade, Tolle, Mittel, Bob, Lang, Zopf, Dutt, Afro) – Scan erkennt 8 davon; realistischere Haare: einzelne Strähnen, natürliche Spitzen, lange Haare fallen auf den Rücken | v22-hairstyles.png, v22-hair-long-bun.png |
+| v23 | 26.09.2026 | Gesichtszüge aus 21 Messungen (Kieferkontur, Stirn, Brauen, Mund, Nasen- und Kinntiefe, absolute Gesichtsgröße) und 22 Formen – Oberflächenfehler im Test 13,9 → 8,7 mm | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

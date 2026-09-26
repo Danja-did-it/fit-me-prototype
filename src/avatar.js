@@ -292,6 +292,7 @@ gl_Position = projectionMatrix * mvPosition;`;
       if (Math.abs(w) < 1e-3) continue;
       if (this.H.targets[n + '-incr']) out.push([n + (w < 0 ? '-decr' : '-incr'), Math.abs(w)]);
       else if (this.H.targets[n + '-out']) out.push([n + (w < 0 ? '-in' : '-out'), Math.abs(w)]);
+      else if (this.H.targets[n + '-up']) out.push([n + (w < 0 ? '-down' : '-up'), Math.abs(w)]);
       else if (this.H.targets[n]) out.push([n, Math.max(0, w)]); // single targets (head shapes)
     }
     this.gains = gains;

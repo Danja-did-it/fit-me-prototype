@@ -236,3 +236,16 @@
   strand + a sheen ring on the curve of the head + a side parting. Long hair falls a little outward below the skull,
   lies on the back below the chin and gets thinner toward the tips. Fade: sides as stubble fading darker upward.
   Bun: ball on the back of the head with a hair tie. Screenshots: v22-hairstyles.png, v22-hair-long-bun.png.
+
+## Iteration 12: facial features from more scan points (user: capture facial features more precisely)
+- 21 measures instead of 11 (face.js faceRatios): + face outline at 4 heights (cheek -> chin = jaw shape), forehead
+  height, brow height, mouth height, nose tip and chin depth (MediaPipe z), and the ABSOLUTE face size (face width /
+  body height, from the full-body photo) - the ratios alone are scale-free, so a 5 % bigger head looked "right".
+- 22 shape parameters instead of 10: + cheek bones, cheek volume, chin width, chin forward, nose depth, nose tip,
+  brow height, mouth height, forehead, head fullness, head width, square head.
+- Fit: measures x parameters Jacobian (not square any more), Gauss-Newton with 3 rounds (Jacobian measured again at the
+  new face - the shapes are not linear), line search, mild prior against caricature values (V_PRIOR).
+- New test: face SURFACE error in mm (front view) between true and fitted head, 8 random virtual faces:
+  average face 13.9 mm, old estimate 15.3 mm, v21 fit n/a (scale-free), new fit 8.7 mm (6.9 without prior; the prior
+  keeps real photos natural: without it the sample portrait got bloated cheeks at +-1 values).
+- Known: the photo body outline includes the hair -> face size ~1 % low. ~4-9 s in the headless test (no GPU).

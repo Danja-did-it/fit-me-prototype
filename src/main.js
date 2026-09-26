@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar, HAIR_STYLES } from './avatar.js';
-import { bodyFromScans } from './measure.js';
+import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
 import { Animator } from './anim.js';
 import { GROUPS } from './anatomy.js';
@@ -122,7 +122,12 @@ async function runScan(view, image, { apply = true } = {}) {
         setStatus('Analysiere Gesicht …');
         const { analyzeFace, drawFace } = await import('./face.js');
         try { scan.face = await analyzeFace(image, scan.landmarks); } catch (e) { console.warn('face analysis failed', e); }
-        if (scan.face) { scans.face = scan.face; drawFace($('prevFace'), scan.face); manual = {}; }
+        if (scan.face) {
+          // absolute face size: face width / body height (the ratios alone are scale-free)
+          const { top, bottom } = verticalExtent(scan.mask);
+          if (bottom > top) scan.face.ratios.faceSize = scan.face.faceWidthImg / ((bottom - top) / scan.mask.height);
+          scans.face = scan.face; drawFace($('prevFace'), scan.face); manual = {};
+        }
         faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
       }
     }
