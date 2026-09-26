@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Avatar, HAIR_STYLES } from './avatar.js';
+import { buildBodyMap } from './bodymap.js';
 import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
 import { Animator } from './anim.js';
@@ -302,6 +303,8 @@ function applyScans() {
   const keys = [...(scans.front.length ? [...FRONT_KEYS, ...FRONT_PROFILES] : []), ...(scans.side.length ? [...SIDE_KEYS, ...SIDE_PROFILES] : [])];
   if (avatar.H && keys.length) fitResult = fitToScan(avatar, body, keys);
   else { avatar.fit = { weight: 0.5, muscle: 0.5, local: {} }; fitResult = null; }
+  // clothes colors from the photos (projected onto the fitted body, bodymap.js)
+  avatar.bodyMap = avatar.H && keys.length ? buildBodyMap(avatar, scans, body, scans.face?.wb) : null;
   avatar.fit.face = faceTargets(scans.face?.measures); // face shape: quick estimate first ...
   const fk = faceKey();
   avatar.faceMap = null;

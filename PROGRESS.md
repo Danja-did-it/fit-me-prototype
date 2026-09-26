@@ -282,3 +282,12 @@
   so the voxel light does not shade the face twice; soft edge at the face outline and toward the sides, max 90 %.
   Painted brows / lips are dropped where the photo covers them; the drawn eyes stay (lively). Sample portrait: glasses,
   wrinkles, moustache and brows appear, clearly recognizable. Cost: map ~0.3 s, build +10 ms.
+- Round 4 (v28): clothes from the photos (src/bodymap.js). The scan keeps a downscaled copy of the photo (device
+  only). The fitted mesh is put into the photo pose, aligned with the photo (pixels per meter from shoulder -> ankle
+  height, center from the hips - robust to MediaPipe's left/right swap on back photos), a depth buffer (3 px cells)
+  decides what the camera really sees, the person mask rejects background. Each cube takes the photo color of its
+  mesh triangle: front-facing from the front photo, back-facing from the back photo, blended by how directly it faces
+  the camera. Applied to clothes / shoes; bare skin keeps the scanned tone (veins, definition follow the sliders) -
+  but where the outfit guess said "skin" and the photo clearly shows something else (long sleeves taken for short),
+  the photo wins. Sample portrait: suit lapel, buttons, lighter shirt, dark sleeves appear. Known: arms posed very
+  differently from the fit (arm on a chair) get some wrong patches.

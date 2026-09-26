@@ -52,8 +52,17 @@ export async function analyze(image) {
     try { outfit = await analyzeOutfit(image, landmarks, mask); } catch (e) { console.warn('outfit analysis failed', e); }
     const colors = sampleColors(image, landmarks, mask);
     if (outfit) Object.assign(colors, outfit.colors);
+    // the photo itself, scaled down (stays on this device): its colors are projected onto the
+    // clothes of the avatar (bodymap.js)
+    const iw = image.naturalWidth || image.width, ih = image.naturalHeight || image.height, ps = Math.min(1, 960 / ih);
+    const pc = document.createElement('canvas');
+    pc.width = Math.round(iw * ps); pc.height = Math.round(ih * ps);
+    const pctx = pc.getContext('2d', { willReadFrequently: true });
+    pctx.drawImage(image, 0, 0, pc.width, pc.height);
+    const photo = { pixels: pctx.getImageData(0, 0, pc.width, pc.height).data, width: pc.width, height: pc.height };
     return {
       landmarks,
+      photo,
       mask: fineMask || mask,
       coarseMask: mask,
       outfit,

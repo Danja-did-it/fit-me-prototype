@@ -510,7 +510,7 @@ gl_Position = projectionMatrix * mvPosition;`;
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
         const gd = this.grooveDist, groove = gd[a] * w0 + gd[b] * cb.u + gd[c] * cb.v; // distance to a muscle border
-        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], tissue, occ: cb.occ, size, ctx });
+        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, ctx });
         const jw = worldOf[jn];
         (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nrm.clone(), v: vMain });
         if (res) extra.push({ jn, size, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
@@ -584,7 +584,7 @@ gl_Position = projectionMatrix * mvPosition;`;
 
   // ---- colors: returns { layers, color } when extra hair/beard volume is wanted ----
   colorCube(out, q) {
-    const { jn, x, y, z, n, isEye, hand, ear, groove, label, tissue, occ, ctx } = q;
+    const { jn, x, y, z, n, isEye, hand, ear, groove, label, bary, tissue, occ, ctx } = q;
     const c = this.body.colors, look = this.body.look, o = look.outfit;
     const { face, W, L, s } = ctx;
     const E = face.eye;
@@ -731,6 +731,18 @@ gl_Position = projectionMatrix * mvPosition;`;
       }
       if (!shirt && (jn === 'spine' || jn === 'chest') && n.z > 0.5 && Math.hypot(x, y - (W.hipL[1] + 0.125 * s)) < 0.006 * s) {
         special = new THREE.Color(c.skin).multiplyScalar(0.6);
+      }
+    }
+    // clothes and shoes as on the photo (patterns, logos, folds): projected photo colors (bodymap.js).
+    // Bare skin keeps the scanned skin tone, so veins and muscle definition follow the sliders.
+    // Where the outfit guess says "skin" but the photo clearly shows something else (e.g. long
+    // sleeves taken for short ones), the photo wins.
+    if (this.bodyMap && !head && !hand && bary) {
+      const m = this.bodyMap.lookup(...bary);
+      const off = (a, b) => Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
+      if (m && (color !== c.skin || off(m.color, c.skin) > 75)) {
+        color = new THREE.Color(color).lerp(new THREE.Color(m.color), 0.9 * m.weight).getHex();
+        if (special === DETAIL.sole || special === DETAIL.sock) special = null;
       }
     }
     // veins on bare skin when the body fat is low
