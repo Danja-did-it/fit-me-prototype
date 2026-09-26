@@ -64,10 +64,12 @@ const toLab = (hex) => {
   const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.9505), y = f(0.2126 * r + 0.7152 * g + 0.0722 * b), z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.089);
   return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
 };
+// Lightness counts double: photo colors are often washed out (sepia, grey light), so their hue / saturation
+// is less reliable than how light or dark the skin / hair is.
 export function snapColor(hex, palette) {
   const a = toLab(hex);
   let best = palette[0], bd = Infinity;
-  for (const p of palette) { const b = toLab(p), d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2; if (d < bd) { bd = d; best = p; } }
+  for (const p of palette) { const b = toLab(p), d = (2 * (a[0] - b[0])) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2; if (d < bd) { bd = d; best = p; } }
   return best;
 }
 // Measurements (meters). The scan overrides them; the model is fitted to them (fit.js).
@@ -836,7 +838,7 @@ vCube = position / (0.5 * vCubeSize);`;
     // Bare skin keeps the scanned skin tone, so veins and muscle definition follow the sliders.
     // Where the outfit guess says "skin" but the photo clearly shows something else (e.g. long
     // sleeves taken for short ones), the photo wins.
-    if (this.bodyMap && !head && !hand && bary) {
+    if (this.bodyMap && !game && !head && !hand && bary) { // (game style: the Voxel-Double keeps its flat outfit)
       const m = this.bodyMap.lookup(...bary);
       const off = (a, b) => Math.hypot(((a >> 16) & 255) - ((b >> 16) & 255), ((a >> 8) & 255) - ((b >> 8) & 255), (a & 255) - (b & 255));
       if (m && (color !== c.skin || off(m.color, c.skin) > 75)) {
