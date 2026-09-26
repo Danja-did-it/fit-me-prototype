@@ -152,6 +152,7 @@ new ResizeObserver(resize).observe(stage);
 resize();
 
 let demo = null; // running demo tour (see runDemo)
+let progress = null; // progress view (Anfang / Jetzt / Ziel), see enterProgress
 
 // Render loop
 renderer.setAnimationLoop(() => {
@@ -159,6 +160,7 @@ renderer.setAnimationLoop(() => {
   if (demo?.spin) avatar.root.rotation.y += Math.min((now - lastTime) / 1000, 0.1) * 0.7; // demo: turn slowly
   animator.update(Math.min((now - lastTime) / 1000, 0.1)); // seconds; capped after tab switches
   avatar.updateSkin(); // joint movement -> GPU skinning of the cubes
+  if (progress) progressFrame(Math.min((now - lastTime) / 1000, 0.1));
   lastTime = now;
   controls.update();
   renderer.render(scene, camera);
@@ -541,6 +543,7 @@ function applyScans() {
   // first scan: the sliders start at 0 / 0 = you as scanned (not the hero's lean start values)
   const scanned = isScanned();
   if (scanned && !wasScanned && !compTouched) { resetComp(); updateComposition(); }
+  if (scanned && !wasScanned && !goalTouched) resetGoal(); // goal after a scan: -40 / +40
   wasScanned = scanned;
   document.body.classList.toggle('scanned', scanned); // hides "Jetzt scannen"
   avatar.body = body;
@@ -560,6 +563,7 @@ function applyScans() {
   rebuild();
   showMeasures(body);
   showLook(body);
+  if (progress) rebuildExtras(); // a new scan: all three avatars
 }
 heightInput.addEventListener('change', applyScans);
 for (const id of ['gender', 'age']) $(id).addEventListener('change', applyScans);
@@ -596,6 +600,7 @@ function rebuild() {
     rebuildQueued = false;
     avatar.build();
     updateChips();
+    if (progress) updateProgress();
     const s = avatar.stats, n = (v) => v.toLocaleString('de-DE');
     const muscle = s.slow + s.fast;
     $('stats').textContent = `${n(avatar.voxelCount)} Würfel (${Math.round(avatar.buildMs)} ms) · sichtbar: ` +
@@ -688,7 +693,112 @@ function updateChips() {
   const v = (Math.abs(dm) < 0.05 ? 0 : Math.abs(dm)).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   $('chipMm').innerHTML = `<span class="num${dm > 0.05 ? ' good' : ''}">${sign}${v}</span><span class="unit"> kg</span>`;
 }
-$('weight').addEventListener('change', updateChips);
+$('weight').addEventListener('change', () => { updateChips(); if (progress) updateProgress(); });
+
+// ---------------------------------------------------------------------------
+// Fortschritt: "Anfang / Jetzt / Ziel" side by side. Jetzt = the main avatar (x = 0); Anfang and Ziel are
+// two extra avatars (sharing the body data) that exist only while this view is open.
+// ---------------------------------------------------------------------------
+const SPACING = 0.85; // m between the avatars (the afro is ~0.8 m wide)
+const goalDefault = () => (isScanned() ? { fat: -40, muscle: 40 } : { fat: -70, muscle: 90 });
+let goalTouched = false;
+const goalComp = () => ({ fat: Number($('goalFat').value) / 100, muscle: Number($('goalMuscle').value) / 100 });
+function showGoal() { $('goalFatOut').textContent = fmt(Number($('goalFat').value)); $('goalMuscleOut').textContent = fmt(Number($('goalMuscle').value)); }
+function resetGoal() { const g = goalDefault(); $('goalFat').value = g.fat; $('goalMuscle').value = g.muscle; goalTouched = false; showGoal(); }
+resetGoal();
+for (const id of ['goalFat', 'goalMuscle']) {
+  $(id).addEventListener('input', () => { goalTouched = true; showGoal(); });
+  $(id).addEventListener('change', () => { if (progress) { buildExtra(progress.ziel, goalComp()); updateProgress(); } });
+}
+$('goalReset').addEventListener('click', () => { resetGoal(); if (progress) { buildExtra(progress.ziel, goalComp()); updateProgress(); } });
+$('goalEdit').addEventListener('click', () => { showTab('body'); $('goal').scrollIntoView({ block: 'start' }); });
+
+function makeExtra(x, phase) {
+  const a = new Avatar(avatar.H, avatar);
+  a.setHuman(avatar.H, avatar); // now (not in the constructor's promise): builds only once, below
+  a.root.position.x = x;
+  scene.add(a.root);
+  const anim = new Animator(a);
+  anim.time = phase; // not all in step
+  return { a, anim };
+}
+// same person / look / style as the main avatar, own fat + muscle (uniform, no single groups)
+function buildExtra(e, comp) {
+  Object.assign(e.a, { body: avatar.body, person: { ...avatar.person }, fit: avatar.fit, style: avatar.style, view: 'look',
+    voxel: avatar.style === 'real' ? Math.max(avatar.voxel, 0.01) : avatar.voxel, faceMap: avatar.faceMap, bodyMap: avatar.bodyMap });
+  e.a.composition = { ...avatar.composition, fat: comp.fat, muscle: comp.muscle, groups: {}, tint: false };
+  e.a.build();
+}
+function rebuildExtras() {
+  buildExtra(progress.anfang, anfangComp());
+  buildExtra(progress.ziel, goalComp());
+  updateProgress();
+}
+function enterProgress() {
+  if (progress || !avatar.H) return;
+  document.body.dataset.stage = 'progress';
+  progress = { cam: [camera.position.clone(), controls.target.clone()], anfang: makeExtra(-SPACING, 0.4), ziel: makeExtra(SPACING, 0.8) };
+  // labels: kg / KF chip over each avatar, name under it, arrows between them
+  $('progressLabels').innerHTML = ['anfang', 'jetzt', 'ziel'].map((k) => `<div class="pl-chip glass" data-k="${k}"></div>`).join('') +
+    '<div class="pl-name" data-k="anfang">Anfang</div><div class="pl-name now" data-k="jetzt">Jetzt</div><div class="pl-name" data-k="ziel">Ziel</div>' +
+    '<div class="pl-arrow" data-k="a1">»</div><div class="pl-arrow" data-k="a2">»</div>';
+  rebuildExtras();
+  fitView();
+  // camera: all three (plus labels) in view
+  const vf = (camera.fov * Math.PI) / 360, hf = Math.atan(Math.tan(vf) * camera.aspect);
+  const d = Math.max(1.3 / Math.tan(vf), (SPACING + 0.47) / Math.tan(hf));
+  controls.target.set(0, 1.0, 0);
+  camera.position.set(0, 1.05, d);
+  for (const b of $('modeSeg').querySelectorAll('button')) b.classList.toggle('active', b.dataset.stage === 'progress');
+}
+function leaveProgress() {
+  if (!progress) return;
+  for (const e of [progress.anfang, progress.ziel]) e.a.dispose();
+  camera.position.copy(progress.cam[0]); controls.target.copy(progress.cam[1]);
+  progress = null;
+  document.body.dataset.stage = 'avatar';
+  $('progressLabels').innerHTML = '';
+  fitView();
+  for (const b of $('modeSeg').querySelectorAll('button')) b.classList.toggle('active', b.dataset.stage === 'avatar');
+}
+for (const b of $('modeSeg').querySelectorAll('button')) b.addEventListener('click', () => (b.dataset.stage === 'progress' ? enterProgress() : leaveProgress()));
+// texts: kg + KF per avatar, "x % zum Ziel" (how far Jetzt is on the way Anfang -> Ziel in the slider plane)
+function updateProgress() {
+  if (!progress) return;
+  const calib = kgCalib(), el = (k) => $('progressLabels').querySelector(`.pl-chip[data-k="${k}"]`);
+  for (const [k, a] of [['anfang', progress.anfang.a], ['jetzt', avatar], ['ziel', progress.ziel.a]]) {
+    if (!a.fat || !a.volumeL) continue;
+    el(k).innerHTML = `<b>${Math.round(massOf(a.volumeL, a.fat.percent) * calib)} kg</b> · ${Math.round(a.fat.percent)} % KF`;
+  }
+  const A = anfangComp(), Z = goalComp(), J = avatar.composition;
+  const zx = Z.fat - A.fat, zy = Z.muscle - A.muscle, l2 = zx * zx + zy * zy;
+  const p = l2 ? Math.min(1, Math.max(0, ((J.fat - A.fat) * zx + (J.muscle - A.muscle) * zy) / l2)) : 1;
+  const txt = `${Math.round(p * 100)} % zum Ziel`;
+  $('progressBarText').textContent = txt;
+  $('progressBar').querySelector('.fill').style.width = (p * 100).toFixed(1) + '%';
+  const z = progress.ziel.a;
+  $('progressText').textContent = txt + (z.fat ? ` · Ziel: ${Math.round(massOf(z.volumeL, z.fat.percent) * calib)} kg, ${Math.round(z.fat.percent)} % Körperfett` : '');
+  progress.p = p;
+}
+// every frame: extra avatars move (idle), labels follow the projected avatars
+function progressFrame(dt) {
+  for (const e of [progress.anfang, progress.ziel]) { e.anim.update(dt); e.a.updateSkin(); }
+  const rect = stage.getBoundingClientRect(), v = new THREE.Vector3();
+  const at = (x, y) => { v.set(x, y, 0).project(camera); return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height]; };
+  const place = (sel, [x, y]) => { const n = $('progressLabels').querySelector(sel); if (n) { n.style.left = x + 'px'; n.style.top = y + 'px'; } };
+  const avs = { anfang: progress.anfang.a, jetzt: avatar, ziel: progress.ziel.a };
+  for (const [k, a] of Object.entries(avs)) {
+    if (!a.joints.head) continue;
+    // over the hair: top of the figure, following the head as it moves
+    const x = a.root.position.x, hy = (a.topY ?? a.bindHeadY + 0.3) + (a.joints.head.getWorldPosition(v).y - a.bindHeadY) + 0.02;
+    const [sx, sy] = at(x, hy);
+    place(`.pl-chip[data-k="${k}"]`, [sx, sy - 10]);
+    place(`.pl-name[data-k="${k}"]`, [at(x, 0)[0], at(x, 0)[1] + 8]);
+  }
+  const hipY = avatar.mesh ? avatar.mesh.W.hips[1] : 0.7;
+  place('.pl-arrow[data-k="a1"]', at(-SPACING / 2, hipY));
+  place('.pl-arrow[data-k="a2"]', at(SPACING / 2, hipY));
+}
 
 // ---------------------------------------------------------------------------
 // Animation mode buttons
@@ -797,6 +907,7 @@ function applyStyle() {
   composeLook(); // outfit / accessories / palette depend on the style
   showLook(avatar.body);
   updateComposition();
+  if (progress) rebuildExtras();
 }
 $('style').addEventListener('change', applyStyle);
 setStage($('style').value);
@@ -862,6 +973,7 @@ function stopDemo() {
 }
 async function runDemo() {
   showTab('avatar'); // big stage for the tour
+  leaveProgress();
   const token = { spin: true };
   demo = token;
   const alive = () => demo === token;

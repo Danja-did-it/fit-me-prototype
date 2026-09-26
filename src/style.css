@@ -169,3 +169,24 @@ body.legend-on #chips, body[data-stage="progress"] #chips { display: none; }
 .rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rail-btn:hover:not(:disabled) { border-color: var(--accent); }
 body[data-stage="progress"] #rail { display: none; }
+
+/* stage mode switch [Avatar | Fortschritt] */
+#modeSeg { margin: 0; padding: 0; border-radius: 999px; height: 32px; }
+#modeSeg button { font-size: 12px; font-weight: 600; padding: 0 12px; height: 30px; background: transparent; color: var(--text); }
+#modeSeg button.active { background: var(--accent); color: #0b1a22; }
+/* progress view */
+#progressLabels, #progressBar, #progressPanel { display: none; }
+body[data-stage="progress"] #progressLabels, body[data-stage="progress"] #progressBar { display: block; }
+body[data-stage="progress"] #progressPanel { display: block; margin-top: 10px; }
+body[data-stage="progress"] #ctaScan, body[data-stage="progress"] #stageLegend { display: none; }
+#progressLabels { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
+#progressLabels > * { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; }
+.pl-chip { padding: 6px 10px; font-size: 12px; font-weight: 600; color: #c9ced6; }
+.pl-chip b { font-size: 13px; font-weight: 700; color: #fff; }
+.pl-name { font-size: 13px; font-weight: 600; color: #e8e8ea; transform: translate(-50%, 0) !important; text-shadow: 0 1px 4px #000; }
+.pl-name.now { color: var(--accent); }
+.pl-arrow { font-size: 22px; color: var(--dim); transform: translate(-50%, -50%) !important; }
+#progressBar { position: absolute; left: 15%; width: 70%; bottom: 16px; z-index: 2; pointer-events: none; }
+#progressBar .t { font-size: 12px; font-weight: 600; color: #c9ced6; text-align: center; margin-bottom: 4px; text-shadow: 0 1px 4px #000; }
+#progressBar .track { height: 6px; border-radius: 3px; background: #1f2633; overflow: hidden; }
+#progressBar .fill { height: 100%; width: 0; background: linear-gradient(90deg, #4fc3f7, #3b82f6); }

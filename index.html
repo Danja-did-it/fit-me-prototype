@@ -17,7 +17,15 @@
     <div class="topbar">
       <!-- 25-second tour that shows the idea without an own scan -->
       <button id="demoBtn" class="demo-btn"><span class="long">▶ Demo: So funktioniert Fit-me</span><span class="short">▶ Demo</span></button>
+      <!-- stage mode: one avatar, or Anfang / Jetzt / Ziel side by side -->
+      <div class="seg glass" id="modeSeg" role="group" aria-label="Ansicht der Bühne">
+        <button data-stage="avatar" class="active">Avatar</button>
+        <button data-stage="progress">Fortschritt</button>
+      </div>
     </div>
+    <!-- progress view: labels over / under the 3 avatars, progress bar -->
+    <div id="progressLabels" aria-live="polite"></div>
+    <div id="progressBar"><div class="t" id="progressBarText"></div><div class="track"><div class="fill"></div></div></div>
     <div id="caption" class="caption" hidden></div>
     <!-- stat chips: weight, body fat, muscle mass (Avatar view) -->
     <div id="chips">
@@ -51,6 +59,10 @@
         <button data-mode="squat">Kniebeuge</button>
       </div>
       <button id="ctaScan" class="primary cta">Jetzt scannen →</button>
+      <div id="progressPanel">
+        <p class="hint" id="progressText"></p>
+        <button id="goalEdit">Ziel ändern</button>
+      </div>
     </section>
 
     <section data-tab-panel="scan">
@@ -150,6 +162,16 @@
         <button id="resetComp">Zurücksetzen</button>
       </div>
       <p class="hint legend" id="legend"></p>
+      <h3 id="goal">Ziel</h3>
+      <label class="slider">
+        <span>Ziel Körperfett <output id="goalFatOut">0 %</output></span>
+        <input type="range" id="goalFat" min="-100" max="100" value="-70" step="5">
+      </label>
+      <label class="slider">
+        <span>Ziel Muskeln <output id="goalMuscleOut">0 %</output></span>
+        <input type="range" id="goalMuscle" min="-100" max="100" value="90" step="5">
+      </label>
+      <button id="goalReset">Ziel zurücksetzen</button>
     </section>
 
     <section data-tab-panel="style">

@@ -265,7 +265,9 @@ export const HAIR_STYLES = {
 
 // ---------------------------------------------------------------------------
 export class Avatar {
-  constructor(human = null) {
+  // shared: another Avatar whose per-point tables (muscle labels, grooves, joints ...) are reused - the
+  // extra avatars of the progress view skip that work (~1 s on a phone) and share the memory
+  constructor(human = null, shared = null) {
     this.root = new THREE.Group();
     this.material = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
     // GPU skinning: every cube follows up to 4 joints (weights from the mesh), so the skin
@@ -337,7 +339,7 @@ vCube = position / (0.5 * vCubeSize);`;
     this.armSpread = 0;
     this.stats = { total: 0, slow: 0, fast: 0, fat: 0, other: 0 };
     this.buildMs = 0;
-    this.ready = (human ? Promise.resolve(human) : loadHuman()).then((H) => { this.setHuman(H); this.build(); });
+    this.ready = (human ? Promise.resolve(human) : loadHuman()).then((H) => { if (this.H) return; this.setHuman(H, shared); this.build(); });
   }
 
   // up to 4 of our joints + weights for a mesh point (from the MakeHuman skin weights)
@@ -366,8 +368,12 @@ vCube = position / (0.5 * vCubeSize);`;
     });
   }
 
-  setHuman(H) {
+  setHuman(H, shared = null) {
     this.H = H;
+    if (shared?.H === H) {
+      for (const k of ['restNormals', 'labels', 'fatSet', 'vertJoint', 'vertDetail', 'vertHand', 'grooveDist', 'vertEar']) this[k] = shared[k];
+      return;
+    }
     this.restNormals = vertexNormals(H.base, H.faces, H.N);
     this.labels = muscleLabels(H, this.restNormals);
     this.fatSet = fatVerts(H);
@@ -660,6 +666,9 @@ vCube = position / (0.5 * vCubeSize);`;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       this.root.add(mesh);
     }
+    // top of the figure (hair included) in bind pose, e.g. for labels above the avatar
+    this.topY = Math.max(...Object.entries(bySize).map(([size, list]) => list.reduce((m, r) => Math.max(m, r.w[1]), 0) + size / 2));
+    this.bindHeadY = worldOf.head[1];
     this.bindInv = JOINT_NAMES.map((j) => new THREE.Matrix4().makeTranslation(-worldOf[j][0], -worldOf[j][1], -worldOf[j][2]));
     for (const [k, r] of Object.entries(saved)) if (joints[k]) joints[k].rotation.copy(r);
     this.armSpread = 0; // the arms are already posed in the mesh
@@ -1441,6 +1450,15 @@ vCube = position / (0.5 * vCubeSize);`;
     if (this._est.size > 50) this._est.clear();
     this._est.set(key, r);
     return r;
+  }
+
+  // free the GPU buffers (extra avatars of the progress view)
+  dispose() {
+    this.root.traverse((o) => o.isInstancedMesh && o.dispose());
+    for (const g of Object.values(this.geometries || {})) g.dispose();
+    this.material.dispose(); this.depthMaterial.dispose();
+    this.root.removeFromParent();
+    this.root.clear();
   }
 
   get voxelCount() {
