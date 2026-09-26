@@ -923,14 +923,16 @@ const setMode = (mode) => {
   animator.mode = mode;
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('active', b.dataset.mode === mode);
 };
-// Screen box of the avatar in the stage (viewport px): head top (+0.30 m for the hair), feet, shoulders
+// Screen box of the avatar in the stage (viewport px): top of the hair, feet, shoulders
 // +-0.35 m. Used to keep captions and overlays off the avatar.
 function avatarBox(av = avatar) {
   const rect = stage.getBoundingClientRect(), p = new THREE.Vector3();
   const head = av.joints.head ? av.joints.head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.6, 0);
   const x0 = av.root.position.x, shY = av.mesh ? (av.mesh.W.shoulderL[1] + av.mesh.W.shoulderR[1]) / 2 : 1.2;
   const box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
-  for (const w of [[head.x, head.y + 0.3, head.z], [x0, 0, 0], [x0 - 0.35, shY, 0], [x0 + 0.35, shY, 0], [x0 - 0.15, 0, 0.12], [x0 + 0.15, 0, 0.12]]) {
+  // top: the top of the figure (big afro) when known, else head + 0.30 m
+  const topY = av.topY != null ? av.topY + (head.y - av.bindHeadY) : head.y + 0.3;
+  for (const w of [[head.x, topY, head.z], [head.x - 0.3, topY, head.z], [head.x + 0.3, topY, head.z], [x0, 0, 0], [x0 - 0.35, shY, 0], [x0 + 0.35, shY, 0], [x0 - 0.15, 0, 0.12], [x0 + 0.15, 0, 0.12]]) {
     p.set(...w).project(camera);
     const sx = rect.left + ((p.x + 1) / 2) * rect.width, sy = rect.top + ((1 - p.y) / 2) * rect.height;
     box.left = Math.min(box.left, sx); box.right = Math.max(box.right, sx); box.top = Math.min(box.top, sy); box.bottom = Math.max(box.bottom, sy);
