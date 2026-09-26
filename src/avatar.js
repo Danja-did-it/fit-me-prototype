@@ -23,8 +23,9 @@ const JOINT_NAMES = ['hips', 'spine', 'chest', 'neck', 'head', 'shoulderL', 'elb
   'shoulderR', 'elbowR', 'hipR', 'kneeR', 'ankleR'];
 const JOINT_INDEX = Object.fromEntries(JOINT_NAMES.map((n, i) => [n, i])); // the first 13,380 mesh points are the body (then eyes, teeth ...)
 
-// Default colors (the scan replaces them)
-const COLORS = {
+// Neutral colors and look (the v37 defaults). The start look is the concept hero (HERO_* below);
+// the scan replaces it.
+export const COLORS = {
   skin: 0xe0ac8a, shirt: 0x3b82c4, shorts: 0x2d3340, shoe: 0xf2f2f2, hair: 0x3a2a20,
   eye: 0x5a4030, lip: 0xc07f70, brow: 0x3a2a20, beard: 0x3a2a20,
 };
@@ -38,12 +39,43 @@ export const DEFAULT_LOOK = {
   mustache: false,
   outfit: { top: 'shirt', sleeves: 'short', bottoms: 'short', shoes: true },
 };
+// The concept hero (the Voxel-Double of the concept image) = start look of the app and the demo:
+// afro, blocky shades, silver chain, shirtless, long black baggy pants with a white cross, white sneakers.
+export const HERO_LOOK = {
+  hair: { style: 'afro', top: 1, width: 1, bangs: false },
+  beard: 'none',
+  mustache: false,
+  acc: { glasses: true, chain: true, watch: false },
+  outfit: { top: 'none', sleeves: 'none', bottoms: 'long', shoes: true },
+};
+export const HERO_COLORS = {
+  ...COLORS, skin: 0xd98c5f, hair: 0x1c1410, brow: 0x1c1410, beard: 0x1c1410, shorts: 0x161616, shoe: 0xdedede, lip: 0xb86e50,
+};
+// start sliders of the hero (fat / muscle in %): lean and defined, the abs show
+export const HERO_COMP = { fat: -50, muscle: 60 };
+// Voxel-Double palette: in the game style scanned skin / hair colors snap to the nearest clean tone
+// (photo colors are often greyish or sepia; a game avatar has flat, saturated colors)
+export const SKIN_TONES = [0xf1c9a5, 0xe0ac8a, 0xd99a6c, 0xd98c5f, 0xb86f45, 0x9a5a38, 0x7a4428, 0x5a3020];
+export const HAIR_TONES = [0x1c1410, 0x3a2616, 0x6b4226, 0xa8753f, 0xd9b36c, 0x8a8a8a];
+const toLab = (hex) => {
+  const lin = (v) => { v /= 255; return v > 0.04045 ? ((v + 0.055) / 1.055) ** 2.4 : v / 12.92; };
+  const r = lin((hex >> 16) & 255), g = lin((hex >> 8) & 255), b = lin(hex & 255);
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.9505), y = f(0.2126 * r + 0.7152 * g + 0.0722 * b), z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.089);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+};
+export function snapColor(hex, palette) {
+  const a = toLab(hex);
+  let best = palette[0], bd = Infinity;
+  for (const p of palette) { const b = toLab(p), d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2; if (d < bd) { bd = d; best = p; } }
+  return best;
+}
 // Measurements (meters). The scan overrides them; the model is fitted to them (fit.js).
 export const DEFAULT_BODY = {
   height: 1.75, shoulderWidth: 0.42, waistWidth: 0.30, hipWidth: 0.34, thighWidth: 0.16,
   chestDepth: 0.23, bellyDepth: 0.21, legLength: 0.93, armLength: 0.52,
   neckWidth: 0.12, upperArmWidth: 0.095, forearmWidth: 0.08, calfWidth: 0.11,
-  colors: COLORS, face: DEFAULT_FACE, look: DEFAULT_LOOK,
+  colors: HERO_COLORS, face: DEFAULT_FACE, look: HERO_LOOK,
 };
 // Person settings that are not lengths
 export const DEFAULT_PERSON = { gender: 1, age: 30 };

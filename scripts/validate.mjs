@@ -12,8 +12,15 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForFunction(() => window.avatar?.H, null, { timeout: 60000 });
-// virtual people must look like real people (the Voxel-Double game style has a bigger head / baggy pants)
-await page.evaluate(() => { window.avatar.style = 'real'; window.avatar.voxel = 0.0075; });
+// virtual people must look like real people (the Voxel-Double game style has a bigger head / baggy pants):
+// realistic style through the UI (-> realistic stage and 0.75 cm cubes) and neutral fat / muscle sliders
+// (the app starts with the lean concept hero)
+await page.evaluate(() => {
+  const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('change')); };
+  set('style', 'real'); set('fat', '0'); set('muscle', '0');
+  window.avatar.style = 'real'; window.avatar.voxel = 0.0075;
+});
+await page.waitForTimeout(500);
 
 const result = await page.evaluate(async (people) => {
   const { runScan, applyScans, scene, camera, renderer } = window.fitme;
@@ -50,7 +57,10 @@ const result = await page.evaluate(async (people) => {
     for (const t of ['torso/measure-waist-circ', 'torso/measure-hips-circ', 'torso/measure-shoulder-dist', 'legs/measure-thigh-circ', 'stomach/stomach-pregnant', 'arms/measure-upperarm-circ'])
       local[t] = (rnd() - 0.5) * 1.2;
     av.fit = { weight: 0.25 + rnd() * 0.5, muscle: 0.25 + rnd() * 0.5, local, face: {} };
-    av.body.look = { ...av.body.look, outfit: { top: 'none', sleeves: 'none', bottoms: 'short', shoes: false } };
+    // the neutral v37 person (short hair, no accessories, v37 colors), not the hero start look
+    av.body.look = { hair: { style: 'short', top: 1, width: 1, bangs: false }, beard: 'none', mustache: false, acc: {},
+      outfit: { top: 'none', sleeves: 'none', bottoms: 'short', shoes: false } };
+    av.body.colors = { ...av.body.colors, skin: 0xe0ac8a, shirt: 0x3b82c4, shorts: 0x2d3340, shoe: 0xf2f2f2, hair: 0x3a2a20, eye: 0x5a4030, lip: 0xc07f70, brow: 0x3a2a20, beard: 0x3a2a20 };
     av.build();
     const truthFit = JSON.parse(JSON.stringify(av.fit));
     const truthShape = av.shape(), truthW = truthShape.W;

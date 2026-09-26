@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Avatar, HAIR_STYLES } from './avatar.js';
+import { Avatar, HAIR_STYLES, HERO_LOOK, HERO_COLORS, HERO_COMP, SKIN_TONES, HAIR_TONES, snapColor } from './avatar.js';
 import { buildBodyMap } from './bodymap.js';
 import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
@@ -136,7 +136,7 @@ async function runScan(view, image, { apply = true } = {}) {
           // absolute face size: face width / body height (the ratios alone are scale-free)
           const { top, bottom } = verticalExtent(scan.mask);
           if (bottom > top) scan.face.ratios.faceSize = scan.face.faceWidthImg / ((bottom - top) / scan.mask.height);
-          scans.face = scan.face; drawFace($('prevFace'), scan.face); manual = {};
+          scans.face = scan.face; drawFace($('prevFace'), scan.face); manual = { look: {}, colors: {} };
         }
         faceText = scan.face ? ', Gesicht erkannt' : ', Gesicht nicht erkannt';
       }
@@ -177,6 +177,7 @@ $('clearScans').addEventListener('click', () => {
   for (const k of Object.keys(tips)) delete tips[k];
   $('tips').innerHTML = '';
   updateScanCount();
+  if (!compTouched) { resetComp(); updateComposition(); } // back to the hero start values
   applyScans();
   setStatus('Aufnahmen gelöscht.');
 });
@@ -433,13 +434,17 @@ async function startFaceFit(key) {
   showMeasures(avatar.body);
 }
 
+let wasScanned = false;
 function applyScans() {
   const h = Math.min(220, Math.max(120, Number(heightInput.value) || 175)) / 100;
   const body = bodyFromScans(scans, h);
-  // manual choices in "Individuell" win over the scan
-  body.look = { ...body.look, ...manual.look, hair: { ...body.look.hair, ...manual.look?.hair }, outfit: { ...body.look.outfit, ...manual.look?.outfit } };
-  body.colors = { ...body.colors, ...manual.colors };
+  scanLook = { look: body.look, colors: body.colors }; // what the scan found (without a scan: the hero)
+  // first scan: the sliders start at 0 / 0 = you as scanned (not the hero's lean start values)
+  const scanned = isScanned();
+  if (scanned && !wasScanned && !compTouched) { resetComp(); updateComposition(); }
+  wasScanned = scanned;
   avatar.body = body;
+  composeLook();
   avatar.person = { gender: Number($('gender').value), age: Number($('age').value) || 30 };
   // fit the human model to everything that was measured
   const keys = [...(scans.front.length ? [...FRONT_KEYS, ...FRONT_PROFILES] : []), ...(scans.side.length ? [...SIDE_KEYS, ...SIDE_PROFILES] : [])];
@@ -523,14 +528,24 @@ function updateComposition(dragging = false) {
   rebuild();
 }
 for (const el of [$('fat'), $('muscle'), ...groupInputs]) {
-  el.addEventListener('input', () => updateComposition(true));
+  el.addEventListener('input', () => { compTouched = true; updateComposition(true); });
   el.addEventListener('change', () => updateComposition(false));
 }
 for (const id of ['training', 'tint', 'view', 'voxel']) $(id).addEventListener('change', () => updateComposition());
+// Start values of the sliders: the hero's lean, defined body before a scan, 0 / 0 (= as scanned) after it
+let compTouched = false; // the user moved a composition slider himself
+const isScanned = () => scans.front.length + scans.side.length > 0;
+function resetComp() {
+  const c = isScanned() ? { fat: 0, muscle: 0 } : HERO_COMP;
+  $('fat').value = c.fat; $('muscle').value = c.muscle;
+  for (const el of groupInputs) el.value = 0;
+  compTouched = false;
+}
 $('resetComp').addEventListener('click', () => {
-  for (const el of [$('fat'), $('muscle'), ...groupInputs]) el.value = 0;
+  resetComp();
   updateComposition();
 });
+resetComp();
 updateComposition();
 
 // ---------------------------------------------------------------------------
@@ -546,7 +561,8 @@ for (const btn of document.querySelectorAll('#modes button')) {
 // ---------------------------------------------------------------------------
 // "Individuell": hairstyle, beard and colors (prefilled from the face scan)
 // ---------------------------------------------------------------------------
-let manual = {}; // user overrides: { look: {...}, colors: {...} }
+let manual = { look: {}, colors: {} }; // user overrides (only the controls the user changed)
+let scanLook = { look: HERO_LOOK, colors: HERO_COLORS }; // look + colors from the scan (start: the hero)
 // hairstyle list from the catalog (avatar.js HAIR_STYLES)
 $('hairStyle').innerHTML = Object.entries(HAIR_STYLES).map(([id, h]) => `<option value="${id}">${h.label}</option>`).join('');
 $('hairStyle').value = 'short';
@@ -575,23 +591,39 @@ function showLook(body) {
   }
 }
 
-function updateLook() {
-  manual.look = {
-    hair: { style: $('hairStyle').value, bangs: $('bangs').checked },
-    beard: $('beard').value,
-    mustache: $('mustache').checked,
-    acc: { glasses: $('accGlasses').checked, chain: $('accChain').checked, watch: $('accWatch').checked },
-    outfit: {
-      top: $('top').value === 'none' ? 'none' : 'shirt',
-      sleeves: { none: 'none', short: 'short', long: 'long', tank: 'none' }[$('top').value],
-      bottoms: $('bottoms').value,
-      shoes: $('shoes').checked,
-    },
-  };
-  manual.colors = {};
-  for (const [id, key] of Object.entries(COLOR_INPUTS)) manual.colors[key] = parseInt($(id).value.slice(1), 16);
-  // beard and eyebrows follow a manually chosen hair color
-  if (manual.colors.hair !== avatar.body.colors.hair) manual.colors.beard = manual.colors.brow = manual.colors.hair;
+// Look + colors: hero start look -> what the scan found -> style rules -> manual choices (always win)
+function composeLook() {
+  const game = avatar.style === 'game', scanned = isScanned();
+  const look = { ...scanLook.look, hair: { ...scanLook.look.hair }, acc: { ...HERO_LOOK.acc }, outfit: { ...scanLook.look.outfit } };
+  const colors = { ...scanLook.colors };
+  if (game) {
+    // Voxel-Double: your body, face and hair in the hero outfit; skin and hair snap to clean game tones
+    look.outfit = { ...HERO_LOOK.outfit };
+    for (const k of ['shirt', 'shorts', 'shoe']) colors[k] = HERO_COLORS[k];
+    if (scanned) {
+      colors.skin = snapColor(colors.skin, SKIN_TONES);
+      colors.hair = colors.brow = colors.beard = snapColor(colors.hair, HAIR_TONES);
+    }
+  } else if (scanned) look.acc = { glasses: false, chain: false, watch: false }; // realistic after a scan: true to life
+  const m = manual.look;
+  avatar.body.look = { ...look, ...m, hair: { ...look.hair, ...m.hair }, acc: { ...look.acc, ...m.acc }, outfit: { ...look.outfit, ...m.outfit } };
+  avatar.body.colors = { ...colors, ...manual.colors };
+}
+
+// a control in "Individuell" changed: remember only that choice
+function updateLook(e) {
+  const id = e.target.id, m = manual.look;
+  if (id in COLOR_INPUTS) {
+    const c = parseInt($(id).value.slice(1), 16);
+    manual.colors[COLOR_INPUTS[id]] = c;
+    if (id === 'colHair') manual.colors.beard = manual.colors.brow = c; // beard and eyebrows follow the hair color
+  } else if (id === 'hairStyle' || id === 'bangs') m.hair = { style: $('hairStyle').value, bangs: $('bangs').checked };
+  else if (id === 'beard') m.beard = $('beard').value;
+  else if (id === 'mustache') m.mustache = $('mustache').checked;
+  else if (id.startsWith('acc')) m.acc = { ...m.acc, [{ accGlasses: 'glasses', accChain: 'chain', accWatch: 'watch' }[id]]: $(id).checked };
+  else if (id === 'top') m.outfit = { ...m.outfit, top: $('top').value === 'none' ? 'none' : 'shirt', sleeves: { none: 'none', short: 'short', long: 'long', tank: 'none' }[$('top').value] };
+  else if (id === 'bottoms') m.outfit = { ...m.outfit, bottoms: $('bottoms').value };
+  else if (id === 'shoes') m.outfit = { ...m.outfit, shoes: $('shoes').checked };
   applyScans();
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accChain', 'accWatch', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
@@ -599,6 +631,8 @@ for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accC
 function applyStyle() {
   avatar.style = $('style').value;
   $('voxel').value = avatar.style === 'game' ? '0.02' : '0.0075';
+  composeLook(); // outfit / accessories / palette depend on the style
+  showLook(avatar.body);
   updateComposition();
 }
 $('style').addEventListener('change', applyStyle);
@@ -621,7 +655,7 @@ function stopDemo() {
   $('demoBtn').textContent = '▶ Demo: So funktioniert Fit-me';
   $('demoBtn').classList.remove('running');
   avatar.root.rotation.y = 0;
-  $('fat').value = 0; $('muscle').value = 0; $('view').value = 'look';
+  resetComp(); $('view').value = 'look'; // back to the start values (hero, or you after a scan)
   setMode('idle');
   updateComposition();
 }
