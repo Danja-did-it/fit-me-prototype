@@ -27,13 +27,14 @@ stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1b1e24);
 
-// Camera looks at the avatar from the front
+// Camera looks at the avatar from the front (framed so the big afro of the hero fits under the demo button)
 const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 100);
-camera.position.set(0, 1.15, 3.6);
+const CAM_HOME = { pos: [0, 1.2, 3.9], target: [0, 1.02, 0] };
+camera.position.set(...CAM_HOME.pos);
 
 // Mouse / touch drag to rotate the view
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.95, 0);
+controls.target.set(...CAM_HOME.target);
 controls.enableDamping = true;
 controls.minDistance = 0.4;
 controls.maxDistance = 8;
@@ -733,7 +734,7 @@ async function runDemo() {
   };
   $('demoBtn').textContent = '■ Demo beenden';
   $('demoBtn').classList.add('running');
-  camera.position.set(0, 1.15, 3.6); controls.target.set(0, 0.95, 0);
+  camera.position.set(...CAM_HOME.pos); controls.target.set(...CAM_HOME.target);
   const steps = [
     async () => { say('Fit-me macht aus 2 Handyfotos deinen 3D-Körper – Würfel für Würfel. Alles wird auf deinem Gerät berechnet, nichts hochgeladen.'); await wait(5000); },
     async () => { say('Weniger Körperfett, mehr Muskeln …'); await tween(-80, 80, 2400); say('Weniger Körperfett, mehr Muskeln: ' + (avatar.style === 'game' ? 'Muskeldefinition wird sichtbar' : 'Muskeldefinition und Adern werden sichtbar') + kfa() + '.'); await wait(3500); },
