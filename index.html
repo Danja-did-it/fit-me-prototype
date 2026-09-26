@@ -19,6 +19,12 @@
       <button id="demoBtn" class="demo-btn"><span class="long">▶ Demo: So funktioniert Fit-me</span><span class="short">▶ Demo</span></button>
     </div>
     <div id="caption" class="caption" hidden></div>
+    <!-- stat chips: weight, body fat, muscle mass (Avatar view) -->
+    <div id="chips">
+      <div class="chip-card glass"><div class="v" id="chipKg"></div><div class="l">Gewicht</div></div>
+      <div class="chip-card glass"><div class="v" id="chipBf"></div><div class="l">Körperfett</div></div>
+      <div class="chip-card glass"><div class="v" id="chipMm"></div><div class="l">Muskelmasse</div></div>
+    </div>
     <!-- color legend of the muscle-group / fiber / tint views, on the stage -->
     <div id="stageLegend" class="glass legend" hidden></div>
   </div>
@@ -228,7 +234,7 @@
       <h3>Berechnung</h3>
       <p class="hint" id="kfaInfo"></p>
       <p class="hint" id="faceInfo">Noch kein Gesicht erkannt – Gesicht ist Durchschnitt. Front-Foto mit gut sichtbarem Gesicht wählen.</p>
-      <p class="hint">Gewicht und Muskelmasse sind Schätzungen aus dem 3D-Modell (Volumen × Dichte; Muskelmasse = Änderung der fettfreien Masse seit Anfang).</p>
+      <p class="hint">Gewicht und Muskelmasse sind Schätzungen aus dem 3D-Modell (Volumen × Dichte; Muskelmasse = Änderung der fettfreien Masse durch die Muskel-Einstellung seit Anfang).</p>
       <h3>Über</h3>
       <p class="hint" id="about">Fit-me · Prototyp v38 Vorschau. Alles wird nur auf diesem Gerät berechnet – kein Upload.</p>
     </section>

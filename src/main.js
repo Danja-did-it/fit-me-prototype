@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Avatar, HAIR_STYLES, HERO_LOOK, HERO_COLORS, HERO_COMP, SKIN_TONES, HAIR_TONES, snapColor } from './avatar.js';
+import { Avatar, HAIR_STYLES, HERO_LOOK, HERO_COLORS, HERO_COMP, SKIN_TONES, HAIR_TONES, snapColor, massOf } from './avatar.js';
 import { buildBodyMap } from './bodymap.js';
 import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
@@ -137,6 +137,15 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
+  fitView();
+}
+// The avatar is shown in the free space between the stat chips (left) and the accessory rail (right):
+// the picture is shifted sideways (view offset), so orbiting still turns around the avatar.
+function fitView() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  const overlays = document.body.dataset.stage !== 'progress';
+  const shift = overlays ? ((12 + 96 + 10) + (w - 12 - 44 - 10)) / 2 - w / 2 : 0; // px, avatar to the right
+  if (shift) camera.setViewOffset(w, h, -shift, 0, w, h); else camera.clearViewOffset();
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(stage);
@@ -586,6 +595,7 @@ function rebuild() {
   requestAnimationFrame(() => {
     rebuildQueued = false;
     avatar.build();
+    updateChips();
     const s = avatar.stats, n = (v) => v.toLocaleString('de-DE');
     const muscle = s.slow + s.fast;
     $('stats').textContent = `${n(avatar.voxelCount)} Würfel (${Math.round(avatar.buildMs)} ms) · sichtbar: ` +
@@ -650,6 +660,35 @@ $('resetComp').addEventListener('click', () => {
 });
 resetComp();
 updateComposition();
+
+// ---------------------------------------------------------------------------
+// Stat chips on the stage: weight (mesh volume x density), body fat, muscle mass since "Anfang"
+// ---------------------------------------------------------------------------
+// "Anfang" = start of the story: before a scan the hero's softer "before" body, after a scan you as scanned
+const anfangComp = () => (isScanned() ? { fat: 0, muscle: 0 } : { fat: 0.3, muscle: -0.1 });
+const leanOf = (kg, bf) => kg * (1 - bf / 100);
+// kg of any state; a weight typed in (Scan tab) calibrates all numbers to the scanned / start body
+function kgCalib() {
+  const w = Number($('weight').value), A = avatar.estimate(anfangComp());
+  return w > 0 ? w / A.kg : 1;
+}
+function updateChips() {
+  const f = avatar.fat;
+  if (!f || !avatar.volumeL || !avatar.H) return;
+  const calib = kgCalib(), A = avatar.estimate(anfangComp());
+  const kg = massOf(avatar.volumeL, f.percent) * calib;
+  // muscle mass: lean mass with the current muscle setting vs. Anfang, both at the Anfang fat setting
+  // (the fat estimate lags behind a fat change, so lean(Jetzt) would also count part of the new fat)
+  const M = avatar.estimate({ fat: anfangComp().fat, muscle: avatar.composition.muscle });
+  const dm = (leanOf(M.kg, M.bf) - leanOf(A.kg, A.bf)) * calib;
+  const typed = Number($('weight').value) > 0;
+  $('chipKg').innerHTML = `${typed ? '' : '<span class="approx">≈ </span>'}<span class="num">${Math.round(kg).toLocaleString('de-DE')}</span><span class="unit"> kg</span>`;
+  $('chipBf').innerHTML = `<span class="num">${Math.round(f.percent)}</span><span class="unit"> %</span>`;
+  const sign = dm > 0.05 ? '+' : dm < -0.05 ? '−' : '±';
+  const v = (Math.abs(dm) < 0.05 ? 0 : Math.abs(dm)).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  $('chipMm').innerHTML = `<span class="num${dm > 0.05 ? ' good' : ''}">${sign}${v}</span><span class="unit"> kg</span>`;
+}
+$('weight').addEventListener('change', updateChips);
 
 // ---------------------------------------------------------------------------
 // Animation mode buttons

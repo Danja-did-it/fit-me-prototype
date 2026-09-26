@@ -92,6 +92,26 @@ const VIEW_COLORS = {
 };
 const TINT = { fat: new THREE.Color(0xffa040), muscle: new THREE.Color(0xe53935), less: new THREE.Color(0x4fa8e8) };
 
+// Volume (m³) of the body mesh (the first 13,380 points: body only, no eyes / teeth): sum of the signed
+// tetrahedra from the centroid to every triangle. The small eye / mouth openings barely matter.
+export function meshVolume(pos, faces) {
+  let cx = 0, cy = 0, cz = 0;
+  for (let v = 0; v < BODY_VERTS; v++) { cx += pos[v * 3]; cy += pos[v * 3 + 1]; cz += pos[v * 3 + 2]; }
+  cx /= BODY_VERTS; cy /= BODY_VERTS; cz /= BODY_VERTS;
+  let vol = 0;
+  for (let f = 0; f < faces.length; f += 3) {
+    const a = faces[f], b = faces[f + 1], c = faces[f + 2];
+    if (a >= BODY_VERTS || b >= BODY_VERTS || c >= BODY_VERTS) continue;
+    const ax = pos[a * 3] - cx, ay = pos[a * 3 + 1] - cy, az = pos[a * 3 + 2] - cz;
+    const bx = pos[b * 3] - cx, by = pos[b * 3 + 1] - cy, bz = pos[b * 3 + 2] - cz;
+    const qx = pos[c * 3] - cx, qy = pos[c * 3 + 1] - cy, qz = pos[c * 3 + 2] - cz;
+    vol += ax * (by * qz - bz * qy) - ay * (bx * qz - bz * qx) + az * (bx * qy - by * qx);
+  }
+  return Math.abs(vol) / 6;
+}
+// Body weight (kg) from volume (liters) and body fat %: two-component density (fat 0.9007, lean 1.100 kg/L)
+export const massOf = (volumeL, bf) => { const f = bf / 100; return volumeL / (f / 0.9007 + (1 - f) / 1.1); };
+
 function hash(a, b, c, d) {
   let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263) ^ Math.imul(c | 0, 1274126177) ^ Math.imul(d | 0, 2246822519);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -445,6 +465,7 @@ vCube = position / (0.5 * vCubeSize);`;
     const H = this.H, V = this.voxel;
     let { pos, W } = this.shape();
     this.fat = bodyFat(this, pos, W); // body fat estimate (Navy formula) -> veins, measures table
+    this.volumeL = meshVolume(pos, H.faces) * 1000; // real (not chibi) body -> weight estimate
     this.chibiShift = 0;
     if (this.style === 'game') ({ pos, W } = this.chibify(pos, W)); // Voxel-Double proportions
 
@@ -1404,6 +1425,22 @@ vCube = position / (0.5 * vCubeSize);`;
       else if (dist < w * 1.9) edge = Math.max(edge, k);
     }
     return best > 0 ? best : -edge;
+  }
+
+  // Weight + body fat for another composition (e.g. "Anfang" / "Ziel") without building cubes. Cached.
+  estimate(comp) {
+    const key = [comp.fat, comp.muscle, this.body.height, this.person.gender, this.person.age, JSON.stringify(this.fit)].join('|');
+    this._est ||= new Map();
+    if (this._est.has(key)) return this._est.get(key);
+    const saved = { composition: this.composition, gains: this.gains, fatGain: this.fatGain };
+    this.composition = { ...saved.composition, fat: comp.fat, muscle: comp.muscle, groups: {} };
+    const { pos, W } = this.shape();
+    const bf = bodyFat(this, pos, W)?.percent ?? 20, volumeL = meshVolume(pos, this.H.faces) * 1000;
+    Object.assign(this, saved);
+    const r = { kg: massOf(volumeL, bf), bf, volumeL };
+    if (this._est.size > 50) this._est.clear();
+    this._est.set(key, r);
+    return r;
   }
 
   get voxelCount() {
