@@ -311,3 +311,7 @@
 - Round 7 (v31): shoes as their own voxel volume (before: paint on the bare foot, toes showed). Foot footprint widened
   ~0.6 cm, filled up to the top of the foot + 0.5 cm (collar 2 cm above the ankle), light sole, the cubes follow the
   ankle joint. Reads as a sneaker. Screenshot v31-shoes.png. Accuracy unchanged (validation runs without shoes).
+- Round 8 (v32): concept demo for instant understanding. "▶ Demo: So funktioniert Fit-me" on the 3D view plays a ~25 s
+  tour with captions: 2 photos -> voxel body on the device (avatar turns), less fat + more muscle (definition, veins,
+  body fat %), more fat, muscle groups view, walking + squat, call to scan. Any touch on the 3D view (or the button)
+  stops it and restores the sliders. Screenshot v32-demo-mobile.png.

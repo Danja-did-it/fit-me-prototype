@@ -87,9 +87,12 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 resize();
 
+let demo = null; // running demo tour (see runDemo)
+
 // Render loop
 renderer.setAnimationLoop(() => {
   const now = performance.now();
+  if (demo?.spin) avatar.root.rotation.y += Math.min((now - lastTime) / 1000, 0.1) * 0.7; // demo: turn slowly
   animator.update(Math.min((now - lastTime) / 1000, 0.1)); // seconds; capped after tab switches
   avatar.updateSkin(); // joint movement -> GPU skinning of the cubes
   lastTime = now;
@@ -459,3 +462,57 @@ for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'top', 'bottoms', '
 window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE }; // for scripts/validate.mjs
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
+
+// ---------------------------------------------------------------------------
+// Demo tour (~25 s): shows the idea without an own scan - scan -> voxel body -> change fat /
+// muscle (definition, veins) -> muscle groups -> movement. Any touch on the 3D view stops it.
+// ---------------------------------------------------------------------------
+const setMode = (mode) => {
+  animator.mode = mode;
+  for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('active', b.dataset.mode === mode);
+};
+function stopDemo() {
+  if (!demo) return;
+  demo = null;
+  $('caption').hidden = true;
+  $('demoBtn').textContent = '▶ Demo: So funktioniert Fit-me';
+  $('demoBtn').classList.remove('running');
+  avatar.root.rotation.y = 0;
+  $('fat').value = 0; $('muscle').value = 0; $('view').value = 'look';
+  setMode('idle');
+  updateComposition();
+}
+async function runDemo() {
+  const token = { spin: true };
+  demo = token;
+  const alive = () => demo === token;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const say = (t) => { $('caption').textContent = t; $('caption').hidden = false; };
+  const kfa = () => (avatar.fat ? ` (Körperfett ≈ ${avatar.fat.percent.toFixed(0)} %)` : '');
+  // slide fat / muscle smoothly (coarse cubes while moving, full detail at the end)
+  const tween = async (fat, muscle, ms) => {
+    const f0 = Number($('fat').value), m0 = Number($('muscle').value);
+    for (let i = 1; i <= 8 && alive(); i++) {
+      $('fat').value = Math.round(f0 + ((fat - f0) * i) / 8);
+      $('muscle').value = Math.round(m0 + ((muscle - m0) * i) / 8);
+      updateComposition(i < 8);
+      await wait(ms / 8);
+    }
+  };
+  $('demoBtn').textContent = '■ Demo beenden';
+  $('demoBtn').classList.add('running');
+  camera.position.set(0, 1.15, 3.6); controls.target.set(0, 0.95, 0);
+  const steps = [
+    async () => { say('Fit-me macht aus 2 Handyfotos deinen 3D-Körper – Würfel für Würfel. Alles wird auf deinem Gerät berechnet, nichts hochgeladen.'); await wait(5000); },
+    async () => { say('Weniger Körperfett, mehr Muskeln …'); await tween(-80, 80, 2400); say('Weniger Körperfett, mehr Muskeln: Muskeldefinition und Adern werden sichtbar' + kfa() + '.'); await wait(3500); },
+    async () => { say('… und so mit mehr Körperfett.'); await tween(70, 0, 2400); say('… und so mit mehr Körperfett' + kfa() + '.'); await wait(2500); },
+    async () => { $('fat').value = 0; $('muscle').value = 40; $('view').value = 'groups'; updateComposition(); say('Jede Muskelgruppe einzeln: sieh, welche Muskeln dein Training aufbaut.'); await wait(4000); },
+    async () => { $('view').value = 'look'; $('muscle').value = 20; updateComposition(); token.spin = false; avatar.root.rotation.y = 0; setMode('walk'); say('Dein Avatar bewegt sich: Gehen …'); await wait(3000); setMode('squat'); say('… Kniebeuge.'); await wait(3800); },
+    async () => { setMode('idle'); say('Jetzt du: Fotos aufnehmen unter „1 · Körper scannen“ – dein eigener Voxel-Körper in Sekunden.'); await wait(4000); },
+  ];
+  for (const step of steps) { if (!alive()) return; await step(); }
+  if (alive()) stopDemo();
+}
+$('demoBtn').addEventListener('click', () => (demo ? stopDemo() : runDemo()));
+stage.addEventListener('pointerdown', (e) => { if (demo && e.target === renderer.domElement) stopDemo(); });
+window.fitme.runDemo = runDemo;

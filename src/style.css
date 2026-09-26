@@ -80,3 +80,12 @@ details[open] summary { margin-bottom: 8px; }
 /* guided capture: green / orange frame around the camera image */
 .camera[data-ok="1"] video { outline: 4px solid #43a047; outline-offset: -4px; }
 .camera[data-ok="0"] video { outline: 4px solid #fb8c00; outline-offset: -4px; }
+
+/* Demo tour: button + captions on top of the 3D view */
+.demo-btn { position: absolute; top: 12px; left: 12px; z-index: 2; background: var(--accent); color: #0b1a22;
+  border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.demo-btn.running { background: #2c313a; color: var(--text); }
+.caption { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2;
+  width: min(92%, 560px); padding: 10px 14px; border-radius: 12px; text-align: center;
+  background: rgba(20, 22, 26, 0.82); backdrop-filter: blur(6px); font-size: 15px; line-height: 1.4; }
