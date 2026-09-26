@@ -34,12 +34,20 @@ function tone(freqs, dur = 0.07, type = 'square', vol = 0.05) {
 export const beep = () => tone([880, 1320]);
 export const shutterSound = () => tone([2400, 1800], 0.04, 'triangle', 0.12);
 
-// Say a sentence. The same sentence is not repeated within 4 s (unless force).
+// Say a sentence. Not chatty: the same hint at most every 15 s and at most 3 times per capture
+// (then it only stays on the screen), at least 3 s of quiet between two hints
+// (force = always, e.g. countdown / confirmations).
+const said = new Map();
+export const resetHints = () => said.clear();
 export function speak(text, { force = false, withBeep = true } = {}) {
   if (!enabled || !window.speechSynthesis || !text) return;
   const clean = text.replace(/\(.*?\)/g, '').replace(/[✓📸–]/g, ' ').trim();
   const now = performance.now();
-  if (!force && clean === lastText && now - lastAt < 4000) return;
+  if (!force) {
+    const n = said.get(clean) || 0;
+    if (speechSynthesis.speaking || now - lastAt < 3000 || n >= 3 || (clean === lastText && now - lastAt < 15000)) return;
+    said.set(clean, n + 1);
+  }
   lastText = clean; lastAt = now;
   speechSynthesis.cancel();
   if (withBeep) beep();

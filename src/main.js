@@ -244,54 +244,97 @@ async function guidedCapture(view, hint, token = null) {
   const own = !token;
   const job = token || (capture = { cancelled: false });
   if (own) setCapturing(true);
-  const { captureFrame, quickPose, scanQuality } = await scanModule();
+  const { captureFrame, livePose, quickPose, plausible, scanQuality } = await scanModule();
   const el = $('countdown'), box = video.parentElement;
   const show = (t, ok) => { el.textContent = t; el.style.fontSize = t.length > 3 ? '17px' : ''; box.dataset.ok = ok ? '1' : '0'; };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const alive = () => cameraOn && !job.cancelled;
-  const check = async () => {
-    const lm = await quickPose(captureFrame(video));
-    const tips = lm ? scanQuality({ landmarks: lm }, view === 'back' ? 'front' : view) : ['Ich sehe dich nicht. Stell dich ganz ins Bild, von Kopf bis Fuß.'];
-    return { lm, tips };
-  };
-  // movement between two checks (share of the body height)
+  // Live tracking ~6-8 x per second. Single frames can flicker (a missed frame, a hand briefly at the
+  // hip): the state shown / spoken is the clear majority of the last 0.7 s, "not seen" only after
+  // ~1 s without a person, and "still" means little movement over a whole second.
+  const NOT_SEEN = 'Ich sehe dich nicht. Stell dich ganz ins Bild, von Kopf bis Fuß.';
   const KEY = [0, 11, 12, 15, 16, 23, 24, 27, 28];
-  const moved = (a, b) => {
-    if (!a || !b) return 1;
-    const h = Math.abs(a[27].y - a[0].y) || 1;
-    return KEY.reduce((s, i) => s + Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y), 0) / KEY.length / h;
+  // (all windows count frames AND time, so it behaves the same on fast and slow phones)
+  const hist = [];
+  let missing = 0, missingSince = 0;
+  const sample = async () => {
+    const lm = await livePose(video), now = performance.now();
+    if (lm) { missing = 0; missingSince = 0; } else { missing++; missingSince ||= now; }
+    const tips = lm ? scanQuality({ landmarks: lm }, view === 'back' ? 'front' : view) : null;
+    const state = lm ? (tips.length ? tips[0] : 'OK') : missing >= 3 && now - missingSince > 1000 ? NOT_SEEN : 'WAIT';
+    hist.push({ t: now, lm, state });
+    while (hist.length > 30 || (hist.length && now - hist[0].t > 4000)) hist.shift();
+  };
+  const stable = () => { // clear majority of the last 4 decided frames (at most 2.5 s old)
+    const now = performance.now(), recent = hist.filter((h) => now - h.t < 2500 && h.state !== 'WAIT').slice(-4);
+    if (recent.length < 3) return null;
+    const count = {};
+    for (const h of recent) count[h.state] = (count[h.state] || 0) + 1;
+    const [best, n] = Object.entries(count).sort((x, y) => y[1] - x[1])[0];
+    return n / recent.length >= 0.6 ? best : null;
+  };
+  const stillFor = (ms) => { // little movement over >= ms and >= 3 frames
+    const withLm = hist.filter((h) => h.lm);
+    if (withLm.length < 3) return false;
+    const now = performance.now();
+    let win = withLm.filter((h) => now - h.t <= ms);
+    if (win.length < 3) win = withLm.slice(-3);
+    if (now - win[0].t < ms * 0.6) return false;
+    const last = win[win.length - 1].lm, h = Math.abs(last[27].y - last[0].y) || 1;
+    let mx = 0;
+    for (const a of win) for (const i of KEY) mx = Math.max(mx, Math.hypot(a.lm[i].x - last[i].x, a.lm[i].y - last[i].y));
+    return mx / h < 0.025;
   };
   setStatus(hint);
+  voice.resetHints();
   voice.speak(VIEW_INTRO[view], { force: true });
-  let taken = false, prev = null, good = 0, goodSince = 0;
+  let taken = false, goodSince = 0, movingSince = 0, saidGood = false, shown = '';
   const until = performance.now() + 90000; // then give up - never fires by itself
   try {
     while (alive() && performance.now() < until && !taken) {
-      const { lm, tips } = await check();
-      const still = moved(lm, prev) < 0.015;
-      prev = lm;
-      if (tips.length) { good = 0; goodSince = 0; show(tips[0], false); if (!voice.speaking()) voice.speak(tips[0]); }
-      else if (!still) { good = 0; goodSince = 0; show('Bitte still stehen …', false); if (!voice.speaking()) voice.speak('Bitte still stehen.'); }
-      else {
-        good++;
-        goodSince ||= performance.now();
-        show('Pose passt ✓ – still halten', true);
-        if (good === 1) voice.speak('Gut so. Bitte still halten.', { force: true });
+      await sample();
+      const st = stable(), now = performance.now();
+      if (st === 'OK') {
+        if (stillFor(1000)) {
+          movingSince = 0;
+          goodSince ||= now;
+          if (shown !== 'OK') { shown = 'OK'; show('Pose passt ✓ – still halten', true); }
+          if (!saidGood) { saidGood = true; voice.speak('Gut so. Bitte still halten.', { force: true }); }
+        } else {
+          goodSince = 0;
+          movingSince ||= now;
+          if (shown !== 'MOVE') { shown = 'MOVE'; show('Bitte still stehen …', false); }
+          if (now - movingSince > 2000) voice.speak('Bitte still stehen.');
+        }
+      } else if (st) {
+        goodSince = 0; movingSince = 0; saidGood = false;
+        if (shown !== st) { shown = st; show(st, false); }
+        voice.speak(st); // not chatty: voice.js spaces and limits repeats
       }
-      // right pose + still for 1.5 s (time based: works on fast and slow phones alike)
-      if (good < 2 || performance.now() - goodSince < 1500) { await wait(250); continue; }
-      // countdown, the pose is checked again at every step
+      if (!goodSince || now - goodSince < 1500) { await wait(100); continue; }
+      // countdown - tracking keeps running, a clear pose error or movement restarts it
       let lost = false;
-      for (let s = 3; s > 0 && alive(); s--) {
-        show(String(s), true);
-        voice.speak(['', 'Eins', 'Zwei', 'Drei'][s], { force: true, withBeep: false });
-        await wait(800);
-        const r = await check();
-        if (r.tips.length || moved(r.lm, prev) > 0.03) { lost = true; break; }
-        prev = r.lm;
+      for (let n = 3; n > 0 && alive() && !lost; n--) {
+        show(String(n), true);
+        voice.speak(['', 'Eins', 'Zwei', 'Drei'][n], { force: true, withBeep: false });
+        const end = performance.now() + 800;
+        while (performance.now() < end && alive()) {
+          await sample();
+          const s2 = stable();
+          if ((s2 && s2 !== 'OK') || !stillFor(700)) { lost = true; break; }
+          await wait(80);
+        }
       }
       if (!alive()) break;
-      if (lost) { good = 0; goodSince = 0; show('Position verloren – nochmal', false); voice.speak('Position verloren. Nochmal von vorn.', { force: true }); await wait(1200); continue; }
+      // cross-check with the precise model on the real frame before taking the photos
+      if (!lost) { const q = await quickPose(captureFrame(video)); if (!q || !plausible(q)) lost = true; }
+      if (lost) {
+        goodSince = 0; saidGood = false; shown = '';
+        show('Position verloren – nochmal', false);
+        voice.speak('Position verloren. Nochmal.', { force: true });
+        await wait(1200);
+        continue;
+      }
       // burst: several photos, the measurements use the median
       const frames = [];
       for (let i = 0; i < BURST && alive(); i++) { frames.push(captureFrame(video)); voice.shutterSound(); show('📸 ' + (i + 1) + '/' + BURST, true); await wait(250); }

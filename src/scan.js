@@ -294,10 +294,12 @@ async function analyzeOutfit(image, lm, mask) {
 // ---------------------------------------------------------------------------
 export function scanQuality(scan, view) {
   const lm = scan.landmarks, tips = [];
-  const vis = (i) => (lm[i].visibility ?? 1) > 0.5;
+  // visible = MediaPipe is fairly sure AND the point lies in the picture (feet on a dark floor often get
+  // a low visibility although they are there - 0.3 is enough)
+  const vis = (i) => (lm[i].visibility ?? 1) > 0.3 && lm[i].y > 0 && lm[i].y < 1;
   if (!vis(0) || !vis(27) || !vis(28)) tips.push('Ganzer Körper von Kopf bis Fuß ins Bild (etwas Rand lassen).');
   const top = Math.min(...lm.map((p) => p.y)), bottom = Math.max(...lm.map((p) => p.y));
-  if (bottom - top < 0.5) tips.push('Näher an die Kamera – der Körper sollte mehr als die halbe Bildhöhe füllen.');
+  if (bottom - top < 0.4) tips.push('Näher an die Kamera – der Körper sollte fast die halbe Bildhöhe füllen.');
   if (top < 0.03 || bottom > 0.99) tips.push('Etwas weiter weg: Kopf oder Füße sind am Bildrand abgeschnitten.');
   const shoulderDx = Math.abs(lm[11].x - lm[12].x), bodyH = Math.abs(lm[27].y - lm[11].y) || 1;
   if (view === 'front') {
@@ -377,6 +379,49 @@ async function refineMask(image, coarse) {
 }
 
 // Fast pose check on a live camera frame (no masks) -> landmarks or null
+// Live tracking for the camera guide (like camera apps): a separate, lighter pose model in VIDEO
+// mode follows the person from frame to frame (much steadier than detecting every frame on its own),
+// with plausibility checks against ghost poses (the tracker can "see" a pose in an empty room).
+// No mask -> fast.
+let livePromise = null, lastTs = 0;
+function loadLive() {
+  if (!livePromise) {
+    livePromise = (async () => {
+      const vision = await FilesetResolver.forVisionTasks(`${BASE}/wasm`);
+      const opts = (delegate) => ({
+        baseOptions: { modelAssetPath: `${BASE}/pose_landmarker_full.task`, delegate },
+        runningMode: 'VIDEO', numPoses: 1, outputSegmentationMasks: false,
+        minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+      });
+      if (window.__liveCPU) return PoseLandmarker.createFromOptions(vision, opts('CPU')); // tests
+      try { return await PoseLandmarker.createFromOptions(vision, opts('GPU')); }
+      catch { return PoseLandmarker.createFromOptions(vision, opts('CPU')); }
+    })();
+    livePromise.catch(() => (livePromise = null));
+  }
+  return livePromise;
+}
+export async function livePose(video) {
+  const lm = await loadLive();
+  if (!video.videoWidth) return null;
+  const ts = Math.max(performance.now(), lastTs + 1); // timestamps must increase
+  lastTs = ts;
+  const r = lm.detectForVideo(video, ts);
+  const L = r.landmarks[0] || null;
+  r.close?.();
+  return L && plausible(L) ? L : null;
+}
+
+// A real standing person: the key points are fairly sure, head above shoulders above hips above
+// knees above ankles, and the body takes at least a quarter of the picture height.
+export function plausible(L) {
+  const key = [0, 11, 12, 23, 24, 25, 26, 27, 28];
+  const vis = key.reduce((s, i) => s + (L[i].visibility ?? 1), 0) / key.length;
+  const y = (a, b) => (L[a].y + L[b].y) / 2;
+  const ordered = L[0].y < y(11, 12) && y(11, 12) < y(23, 24) && y(23, 24) < y(25, 26) && y(25, 26) < y(27, 28);
+  return vis >= 0.55 && ordered && y(27, 28) - L[0].y > 0.25;
+}
+
 export async function quickPose(image) {
   const landmarker = await loadPose();
   const r = landmarker.detect(image);

@@ -40,5 +40,6 @@ Screenshots: `docs/screenshots/`.
 | v32 | 26.09.2026 | Demo-Tour (25 s): zeigt das Konzept ohne eigenen Scan – Scan, Körper verändern, Muskelgruppen, Bewegung | v32-demo-mobile.png |
 | v33 | 26.09.2026 | Kamera repariert (löst nur bei richtiger Pose + Stillstand aus, kein Mehrfach-Auslösen, Abbrechen) + Sprachansage mit Frauen-Roboterstimme + „Geführter Scan“ zum Scannen allein | – |
 | v34 | 26.09.2026 | Schärfere Kamerabilder (1920 px) für Gesicht und Kleidung; Gesichts-Fit passt sich der Gerätegeschwindigkeit an | – |
+| v35 | 26.09.2026 | Kamera-Erkennung stabil: Live-Tracking + Plausibilitätsprüfung + Gegenprobe, Meldungen geglättet; Sprachansage max. 3× pro Hinweis, 15 s Abstand | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

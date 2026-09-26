@@ -333,3 +333,15 @@
 - v34: camera requests 1920 px (iPhone streams 1080 x 1920 upright, before 1280): the face in a full-body photo gets
   ~135 px instead of ~90 px for the face projection. Face fit adapts to the device: if one head render + face points
   takes > 0.35 s, 2 Gauss-Newton rounds instead of 3 (sample: 9.4 -> 6.3 %).
+- v35 (user: instructions repeated too often; detection flickers down to "Ich sehe dich nicht"):
+  * Live tracking like camera apps: a separate pose model in VIDEO mode (full model, no mask) follows the person from
+    frame to frame instead of detecting each frame on its own; plausibility check against ghost poses (key point
+    visibility >= 0.55, head > shoulders > hips > knees > ankles, body >= 25 % of the picture height); before the photos
+    a cross-check with the precise model on the real frame.
+  * Hysteresis: the shown / spoken state is the clear majority (>= 60 %) of the last 4 frames; "not seen" only after
+    >= 3 frames and 1 s without a person; "still" = < 2.5 % movement over >= 1 s; all windows count frames AND time, so
+    fast and slow phones behave the same. Looser checks: visibility 0.3 (feet on dark floors), body >= 40 % height.
+  * Voice: the same hint at most every 15 s and at most 3 times per capture, >= 3 s between hints.
+  * Tests (virtual person streamed as camera, light page so tracking runs at its real pace): 60 s empty room -> no
+    photo, "Ich sehe dich nicht" 3x (15 s apart) then silent; person with a dropout every 7th frame -> no false "not
+    seen", "Gut so" -> 3-2-1 -> photo, 6 spoken lines in total.
