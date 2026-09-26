@@ -159,6 +159,35 @@ renderer.setAnimationLoop(() => {
 // Scan UI: camera / photo -> MediaPipe -> preview
 // ---------------------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------------------
+// App shell: 5 tabs. Phones: fixed tab bar at the bottom; desktop: the same tabs as a strip on top of
+// the panel. One tab's section is shown at a time (body[data-tab], CSS). All controls keep their ids.
+// ---------------------------------------------------------------------------
+const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const TABS = [
+  ['avatar', 'Avatar', '<circle cx="12" cy="7" r="3.5"/><path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/>'],
+  ['scan', 'Scan', '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="3"/>'],
+  ['body', 'Körper', '<path d="M6 8v8M18 8v8M3 10.5v3M21 10.5v3M6 12h12"/>'],
+  ['style', 'Style', '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15.5l.7 1.8 1.8.7-1.8.7L19 20.5l-.7-1.8-1.8-.7 1.8-.7z"/>'],
+  ['details', 'Details', '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'],
+];
+const tabNavs = [$('tabbar'), $('tabstrip')];
+for (const nav of tabNavs) {
+  nav.innerHTML = TABS.map(([id, label, icon]) => `<button role="tab" data-tab="${id}" aria-selected="false">${svg(icon)}<span>${label}</span></button>`).join('');
+  nav.addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+}
+function showTab(id, { force = false } = {}) {
+  if (!force && tabNavs[0].hasAttribute('data-locked')) return; // no tab change while a capture runs
+  document.body.dataset.tab = id;
+  for (const b of document.querySelectorAll('.tabs button[data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
+  window.scrollTo(0, 0);
+  $('panel').scrollTop = 0;
+}
+showTab('avatar');
+$('ctaScan').addEventListener('click', () => showTab('scan'));
+const setScanBusy = (on) => { for (const b of document.querySelectorAll('.tabs button[data-tab="scan"]')) b.toggleAttribute('data-busy', on); };
+
 const statusEl = $('status');
 const setStatus = (t) => (statusEl.textContent = t);
 
@@ -171,6 +200,7 @@ const VIEW_NAMES = { front: 'Front', back: 'Rücken', side: 'Seite' };
 
 async function runScan(view, image, { apply = true } = {}) {
   setStatus('Analysiere ' + VIEW_NAMES[view] + ' … (erstes Mal lädt die Modelle)');
+  setScanBusy(true); // dot on the Scan tab while it runs
   try {
     const { analyze, drawScan, scanQuality } = await scanModule();
     const scan = await analyze(image);
@@ -206,6 +236,8 @@ async function runScan(view, image, { apply = true } = {}) {
   } catch (e) {
     console.error(e);
     setStatus('Fehler bei der Analyse: ' + e.message);
+  } finally {
+    setScanBusy(false);
   }
 }
 
@@ -241,6 +273,7 @@ const video = $('video');
 let cameraOn = false;
 let facing = 'user'; // selfie camera first
 $('camBtn').addEventListener('click', async () => {
+  showTab('scan'); // the camera image lives in the Scan tab (a hidden <video> may stop on iOS)
   const { startCamera, stopCamera, loadPose } = await scanModule();
   if (cameraOn) {
     stopCamera(video);
@@ -290,6 +323,8 @@ const capButtons = ['snapFront', 'snapBack', 'snapSide', 'guidedAll', 'camBtn', 
 function setCapturing(on) {
   for (const id of capButtons) $(id).disabled = on || (id.startsWith('snap') && !cameraOn);
   $('cancelCap').hidden = !on;
+  if (on) showTab('scan', { force: true });
+  for (const nav of tabNavs) nav.toggleAttribute('data-locked', on); // tabs locked while capturing
 }
 $('cancelCap').addEventListener('click', () => { if (capture) capture.cancelled = true; });
 $('voiceOn').addEventListener('change', () => voice.setVoiceEnabled($('voiceOn').checked));
@@ -417,6 +452,7 @@ for (const [view, id, hint] of [['front', 'snapFront', 'Frontal zur Kamera stell
 // put the phone down upright at hip height, step back 2-3 m)
 $('guidedAll').addEventListener('click', async () => {
   if (capture) return;
+  showTab('scan');
   voice.unlockAudio();
   if (!cameraOn) $('camBtn').click();
   const job = (capture = { cancelled: false });
@@ -497,6 +533,7 @@ function applyScans() {
   const scanned = isScanned();
   if (scanned && !wasScanned && !compTouched) { resetComp(); updateComposition(); }
   wasScanned = scanned;
+  document.body.classList.toggle('scanned', scanned); // hides "Jetzt scannen"
   avatar.body = body;
   composeLook();
   avatar.person = { gender: Number($('gender').value), age: Number($('age').value) || 30 };
@@ -556,8 +593,10 @@ function rebuild() {
     // body fat estimate from the model's girths (US Navy formula) - veins show when it is low
     const f = avatar.fat, pct = f ? f.percent.toFixed(1).replace('.', ',') : null;
     const lean = f && f.percent - (1 - avatar.person.gender) * 8 - 1.5 * Math.max(0, avatar.composition.muscle);
-    $('kfa').textContent = f ? `Körperfettanteil ≈ ${pct} % (Schätzung aus Hals-, Taillen- und Hüftumfang, Navy-Formel)` +
-      (avatar.style === 'game' ? '' : lean <= 16 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : ''; // veins: realistic style only
+    $('kfa').textContent = f ? `Körperfett ≈ ${pct} %` +
+      (avatar.style === 'game' ? '' : lean <= 16 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : '') : ''; // veins: realistic style only
+    $('kfaInfo').textContent = f ? `Körperfettanteil ≈ ${pct} %: Schätzung aus Hals-, Taillen- und Hüftumfang des Modells (Navy-Formel), ` +
+      'gemittelt mit einer Schätzung aus den Modell-Einstellungen. Adern (realistischer Stil) ab niedrigem KFA.' : '';
   });
 }
 
@@ -576,6 +615,7 @@ function updateComposition(dragging = false) {
     fat: fat / 100, muscle: muscle / 100, groups, training: $('training').value, tint: $('tint').checked,
   });
   avatar.view = $('view').value;
+  syncViewSeg();
   const fine = Number($('voxel').value);
   avatar.voxel = dragging ? Math.max(fine, 0.02) : fine;
   $('legend').innerHTML = LEGENDS[avatar.view];
@@ -586,6 +626,9 @@ for (const el of [$('fat'), $('muscle'), ...groupInputs]) {
   el.addEventListener('change', () => updateComposition(false));
 }
 for (const id of ['training', 'tint', 'view', 'voxel']) $(id).addEventListener('change', () => updateComposition());
+// Körper tab: [Aussehen | Muskelgruppen] drives the "Ansicht" select (Details tab), and mirrors it
+for (const b of $('viewSeg').querySelectorAll('button')) b.addEventListener('click', () => { $('view').value = b.dataset.view; $('view').dispatchEvent(new Event('change')); });
+function syncViewSeg() { for (const b of $('viewSeg').querySelectorAll('button')) b.classList.toggle('active', b.dataset.view === $('view').value); }
 // Start values of the sliders: the hero's lean, defined body before a scan, 0 / 0 (= as scanned) after it
 let compTouched = false; // the user moved a composition slider himself
 const isScanned = () => scans.front.length + scans.side.length > 0;
@@ -708,7 +751,7 @@ function stopDemo() {
   if (!demo) return;
   demo = null;
   $('caption').hidden = true;
-  $('demoBtn').textContent = '▶ Demo: So funktioniert Fit-me';
+  $('demoBtn').innerHTML = '<span class="long">▶ Demo: So funktioniert Fit-me</span><span class="short">▶ Demo</span>';
   $('demoBtn').classList.remove('running');
   avatar.root.rotation.y = 0;
   resetComp(); $('view').value = 'look'; // back to the start values (hero, or you after a scan)
@@ -716,6 +759,7 @@ function stopDemo() {
   updateComposition();
 }
 async function runDemo() {
+  showTab('avatar'); // big stage for the tour
   const token = { spin: true };
   demo = token;
   const alive = () => demo === token;
@@ -732,7 +776,7 @@ async function runDemo() {
       await wait(ms / 8);
     }
   };
-  $('demoBtn').textContent = '■ Demo beenden';
+  $('demoBtn').innerHTML = '■ Demo beenden';
   $('demoBtn').classList.add('running');
   camera.position.set(...CAM_HOME.pos); controls.target.set(...CAM_HOME.target);
   const steps = [
@@ -741,7 +785,7 @@ async function runDemo() {
     async () => { say('… und so mit mehr Körperfett.'); await tween(70, 0, 2400); say('… und so mit mehr Körperfett' + kfa() + '.'); await wait(2500); },
     async () => { $('fat').value = 0; $('muscle').value = 40; $('view').value = 'groups'; updateComposition(); say('Jede Muskelgruppe einzeln: sieh, welche Muskeln dein Training aufbaut.'); await wait(4000); },
     async () => { $('view').value = 'look'; $('muscle').value = 20; updateComposition(); token.spin = false; avatar.root.rotation.y = 0; setMode('walk'); say('Dein Avatar bewegt sich: Gehen …'); await wait(3000); setMode('squat'); say('… Kniebeuge.'); await wait(3800); },
-    async () => { setMode('idle'); say('Jetzt du: Fotos aufnehmen unter „1 · Körper scannen“ – dein eigener Voxel-Körper in Sekunden.'); await wait(4000); },
+    async () => { setMode('idle'); say('Jetzt du: Fotos aufnehmen unter „Scan“ – dein eigener Voxel-Körper in Sekunden.'); await wait(4000); },
   ];
   for (const step of steps) { if (!alive()) return; await step(); }
   if (alive()) stopDemo();

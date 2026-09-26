@@ -11,20 +11,82 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22%3E%3Crect width=%221%22 height=%221%22 fill=%22%234fc3f7%22/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
-<body>
-  <!-- 3D view -->
+<body data-tab="avatar" data-stage="avatar">
+  <!-- 3D view with its overlays (top bar, captions, chips, accessory rail, legend) -->
   <div id="stage">
-    <!-- 25-second tour that shows the idea without an own scan -->
-    <button id="demoBtn" class="demo-btn">▶ Demo: So funktioniert Fit-me</button>
+    <div class="topbar">
+      <!-- 25-second tour that shows the idea without an own scan -->
+      <button id="demoBtn" class="demo-btn"><span class="long">▶ Demo: So funktioniert Fit-me</span><span class="short">▶ Demo</span></button>
+    </div>
     <div id="caption" class="caption" hidden></div>
   </div>
 
-  <!-- Control panel -->
+  <!-- Control panel: 5 tabs (bottom tab bar on phones, tab strip on top of the panel on desktop) -->
   <aside id="panel">
-    <h1>Fit-me <span>Prototyp · v37 Vorschau</span></h1>
+    <h1>Fit-me</h1>
+    <nav class="tabs" id="tabstrip" role="tablist" aria-label="Bereiche"></nav>
 
-    <section>
-      <h2>1 · Körper scannen</h2>
+    <section data-tab-panel="avatar">
+      <h2>Avatar</h2>
+      <h3>Bewegung</h3>
+      <div class="row" id="modes">
+        <button data-mode="idle" class="active">Stehen</button>
+        <button data-mode="walk">Gehen</button>
+        <button data-mode="squat">Kniebeuge</button>
+      </div>
+      <button id="ctaScan" class="primary cta">Jetzt scannen →</button>
+    </section>
+
+    <section data-tab-panel="scan">
+      <h2>Scan</h2>
+      <h3>Deine Daten</h3>
+      <label class="field">Körpergröße
+        <input type="number" id="height" value="175" min="120" max="220" step="1" inputmode="numeric"> cm
+      </label>
+      <div class="row">
+        <label class="field">Geschlecht
+          <select id="gender"><option value="1" selected>Mann</option><option value="0">Frau</option><option value="0.5">Divers</option></select>
+        </label>
+        <label class="field">Alter <input type="number" id="age" value="30" min="12" max="90" step="1" inputmode="numeric"></label>
+      </div>
+      <label class="field">Gewicht (optional)
+        <input type="number" id="weight" min="30" max="250" step="0.5" inputmode="decimal" placeholder="–"> kg
+      </label>
+      <h3>Aufnehmen</h3>
+      <div class="row">
+        <button id="guidedAll" class="primary">🎙 Geführter Scan (Front → Seite → Rücken)</button>
+        <button id="cancelCap" hidden>Abbrechen</button>
+        <label class="check"><input type="checkbox" id="voiceOn" checked> Sprachansage</label>
+      </div>
+      <div class="camera" hidden>
+        <video id="video" playsinline muted></video>
+        <div id="countdown"></div>
+      </div>
+      <div class="row">
+        <button id="camBtn">Kamera starten</button>
+        <button id="snapFront" disabled>Front aufnehmen</button>
+        <button id="snapBack" disabled>Rücken aufnehmen</button>
+        <button id="snapSide" disabled>Seite aufnehmen</button>
+        <button id="flipCam" hidden>Kamera wechseln</button>
+      </div>
+      <h3>Fotos hochladen</h3>
+      <div class="row">
+        <label class="btn">Front-Fotos<input type="file" accept="image/*" id="fileFront" multiple hidden></label>
+        <label class="btn">Rücken-Fotos<input type="file" accept="image/*" id="fileBack" multiple hidden></label>
+        <label class="btn">Seiten-Fotos<input type="file" accept="image/*" id="fileSide" multiple hidden></label>
+      </div>
+      <h3>Deine Aufnahmen</h3>
+      <div class="row">
+        <span class="hint" id="scanCount">Noch keine Aufnahmen. Mehr Aufnahmen = genauere Maße (Median).</span>
+        <button id="clearScans">Aufnahmen löschen</button>
+      </div>
+      <div class="scans">
+        <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
+        <figure><canvas id="prevSide"></canvas><figcaption>Seite</figcaption></figure>
+        <figure><canvas id="prevFace"></canvas><figcaption>Gesicht</figcaption></figure>
+      </div>
+      <p id="status" role="status">Bereit.</p>
+      <ul id="tips" class="tips"></ul>
       <details class="guide">
         <summary>So scannst du richtig</summary>
         <ul>
@@ -38,65 +100,52 @@
       </details>
       <p class="hint">Alles wird nur auf diesem Gerät berechnet – kein Upload. Beim ersten Scan werden die
         genauen Modelle geladen (ca. 60 MB, danach im Cache).</p>
-      <div class="camera" hidden>
-        <video id="video" playsinline muted></video>
-        <div id="countdown"></div>
-      </div>
-      <div class="row">
-        <button id="camBtn">Kamera starten</button>
-        <button id="snapFront" disabled>Front aufnehmen</button>
-        <button id="snapBack" disabled>Rücken aufnehmen</button>
-        <button id="snapSide" disabled>Seite aufnehmen</button>
-        <button id="flipCam" hidden>Kamera wechseln</button>
-      </div>
-      <div class="row">
-        <button id="guidedAll" class="primary">🎙 Geführter Scan (Front → Seite → Rücken)</button>
-        <button id="cancelCap" hidden>Abbrechen</button>
-        <label class="check"><input type="checkbox" id="voiceOn" checked> Sprachansage</label>
-      </div>
-      <div class="row">
-        <label class="btn">Front-Fotos<input type="file" accept="image/*" id="fileFront" multiple hidden></label>
-        <label class="btn">Rücken-Fotos<input type="file" accept="image/*" id="fileBack" multiple hidden></label>
-        <label class="btn">Seiten-Fotos<input type="file" accept="image/*" id="fileSide" multiple hidden></label>
-      </div>
-      <div class="row">
-        <span class="hint" id="scanCount">Noch keine Aufnahmen. Mehr Aufnahmen = genauere Maße (Median).</span>
-        <button id="clearScans">Aufnahmen löschen</button>
-      </div>
-      <div class="scans">
-        <figure><canvas id="prevFront"></canvas><figcaption>Front</figcaption></figure>
-        <figure><canvas id="prevSide"></canvas><figcaption>Seite</figcaption></figure>
-        <figure><canvas id="prevFace"></canvas><figcaption>Gesicht</figcaption></figure>
-      </div>
-      <p id="status" role="status">Bereit.</p>
-      <ul id="tips" class="tips"></ul>
     </section>
 
-    <section>
-      <h2>2 · Maße</h2>
-      <label class="field">Körpergröße
-        <input type="number" id="height" value="175" min="120" max="220" step="1" inputmode="numeric"> cm
+    <section data-tab-panel="body">
+      <h2>Körper</h2>
+      <h3>Körperfett &amp; Muskeln</h3>
+      <label class="slider">
+        <span>Körperfett <output id="fatOut">0 %</output></span>
+        <input type="range" id="fat" min="-100" max="100" value="0" step="5">
       </label>
-      <div class="row">
-        <label class="field">Geschlecht
-          <select id="gender"><option value="1" selected>Mann</option><option value="0">Frau</option><option value="0.5">Divers</option></select>
-        </label>
-        <label class="field">Alter <input type="number" id="age" value="30" min="12" max="90" step="1" inputmode="numeric"></label>
+      <p class="hint" id="kfa">Körperfett wird berechnet …</p>
+      <label class="slider">
+        <span>Muskeln <output id="muscleOut">0 %</output></span>
+        <input type="range" id="muscle" min="-100" max="100" value="0" step="5">
+      </label>
+      <label class="field">Training
+        <select id="training">
+          <option value="strength">Kraft (schnelle Fasern wachsen stark)</option>
+          <option value="mixed" selected>Gemischt</option>
+          <option value="endurance">Ausdauer (wenig Wachstum)</option>
+        </select>
+      </label>
+      <div class="seg" id="viewSeg" role="group" aria-label="Ansicht">
+        <button data-view="look" class="active">Aussehen</button>
+        <button data-view="groups">Muskelgruppen</button>
       </div>
-      <p class="hint">Deine echte Größe ist der Maßstab. Front/Rücken: Breiten + Längen, Seite: Tiefen.
-        Das Körpermodell wird an alle Aufnahmen angepasst – Tabelle: Foto → Modell.</p>
-      <table id="measures"></table>
+      <details id="groupPanel">
+        <summary>Einzelne Muskelgruppen</summary>
+        <div id="groupSliders"></div>
+      </details>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="tint"> Veränderung einfärben</label>
+        <button id="resetComp">Zurücksetzen</button>
+      </div>
+      <p class="hint legend" id="legend"></p>
     </section>
 
-    <section>
-      <h2>Individuell</h2>
+    <section data-tab-panel="style">
+      <h2>Style</h2>
+      <h3>Stil</h3>
       <label class="field">Stil
         <select id="style">
           <option value="game" selected>Voxel-Double (Game-Look)</option>
           <option value="real">Realistisch (feine Würfel)</option>
         </select>
       </label>
-      <p class="hint" id="faceInfo">Noch kein Gesicht erkannt – Gesicht ist Durchschnitt. Front-Foto mit gut sichtbarem Gesicht wählen.</p>
+      <h3>Frisur &amp; Bart</h3>
       <label class="field">Frisur
         <select id="hairStyle"></select>
       </label>
@@ -108,6 +157,11 @@
           <option value="full">Vollbart</option>
         </select>
       </label>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="bangs"> Pony</label>
+        <label class="check"><input type="checkbox" id="mustache"> Schnurrbart</label>
+      </div>
+      <h3>Outfit</h3>
       <label class="field">Oberteil
         <select id="top">
           <option value="none">Oben ohne</option>
@@ -124,15 +178,15 @@
         </select>
       </label>
       <div class="row">
-        <label class="check"><input type="checkbox" id="bangs"> Pony</label>
         <label class="check"><input type="checkbox" id="shoes" checked> Schuhe</label>
-        <label class="check"><input type="checkbox" id="mustache"> Schnurrbart</label>
       </div>
+      <h3>Accessoires</h3>
       <div class="row">
         <label class="check"><input type="checkbox" id="accGlasses"> Sonnenbrille</label>
         <label class="check"><input type="checkbox" id="accChain"> Kette</label>
         <label class="check"><input type="checkbox" id="accWatch"> Uhr</label>
       </div>
+      <h3>Farben</h3>
       <div class="colors">
         <label>Haut<input type="color" id="colSkin"></label>
         <label>Haare<input type="color" id="colHair"></label>
@@ -143,37 +197,13 @@
       </div>
     </section>
 
-    <section>
-      <h2>3 · Körper verändern</h2>
-      <label class="slider">
-        <span>Körperfett <output id="fatOut">0 %</output></span>
-        <input type="range" id="fat" min="-100" max="100" value="0" step="5">
-      </label>
-      <p class="hint" id="kfa">Körperfettanteil wird berechnet …</p>
-      <label class="slider">
-        <span>Muskeln <output id="muscleOut">0 %</output></span>
-        <input type="range" id="muscle" min="-100" max="100" value="0" step="5">
-      </label>
-      <label class="field">Training
-        <select id="training">
-          <option value="strength">Kraft (schnelle Fasern wachsen stark)</option>
-          <option value="mixed" selected>Gemischt</option>
-          <option value="endurance">Ausdauer (wenig Wachstum)</option>
-        </select>
-      </label>
-      <details id="groupPanel">
-        <summary>Einzelne Muskelgruppen</summary>
-        <div id="groupSliders"></div>
-      </details>
-      <div class="row">
-        <label class="check"><input type="checkbox" id="tint"> Veränderung einfärben</label>
-        <button id="resetComp">Zurücksetzen</button>
-      </div>
-      <p class="hint legend" id="legend"></p>
-    </section>
-
-    <section>
-      <h2>Darstellung</h2>
+    <section data-tab-panel="details">
+      <h2>Details</h2>
+      <h3>Messwerte</h3>
+      <p class="hint">Deine echte Größe ist der Maßstab. Front/Rücken: Breiten + Längen, Seite: Tiefen.
+        Das Körpermodell wird an alle Aufnahmen angepasst – Tabelle: Foto → Modell.</p>
+      <table id="measures"></table>
+      <h3>Darstellung</h3>
       <label class="field">Ansicht
         <select id="view">
           <option value="look">Aussehen</option>
@@ -193,17 +223,17 @@
         </select>
       </label>
       <p class="hint" id="stats"></p>
-    </section>
-
-    <section>
-      <h2>4 · Bewegung</h2>
-      <div class="row" id="modes">
-        <button data-mode="idle" class="active">Stehen</button>
-        <button data-mode="walk">Gehen</button>
-        <button data-mode="squat">Kniebeuge</button>
-      </div>
+      <h3>Berechnung</h3>
+      <p class="hint" id="kfaInfo"></p>
+      <p class="hint" id="faceInfo">Noch kein Gesicht erkannt – Gesicht ist Durchschnitt. Front-Foto mit gut sichtbarem Gesicht wählen.</p>
+      <p class="hint">Gewicht und Muskelmasse sind Schätzungen aus dem 3D-Modell (Volumen × Dichte; Muskelmasse = Änderung der fettfreien Masse seit Anfang).</p>
+      <h3>Über</h3>
+      <p class="hint" id="about">Fit-me · Prototyp v38 Vorschau. Alles wird nur auf diesem Gerät berechnet – kein Upload.</p>
     </section>
   </aside>
+
+  <!-- bottom tab bar (phones) - filled from the same list as the desktop tab strip (main.js) -->
+  <nav id="tabbar" class="tabs" role="tablist" aria-label="Bereiche"></nav>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
