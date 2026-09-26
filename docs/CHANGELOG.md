@@ -31,5 +31,6 @@ Screenshots: `docs/screenshots/`.
 | v23 | 26.09.2026 | Gesichtszüge aus 21 Messungen (Kieferkontur, Stirn, Brauen, Mund, Nasen- und Kinntiefe, absolute Gesichtsgröße) und 22 Formen – Oberflächenfehler im Test 13,9 → 8,7 mm | – |
 | v24 | 26.09.2026 | Körperfettanteil-Schätzung (Navy-Formel aus Umfängen) und Adern bei niedrigem KFA (Unterarm, Handrücken, Bizeps, Wade, Unterbauch); Unterarme in feinen Würfeln | v24-veins.png |
 | v25 | 26.09.2026 | KFA realistisch (Navy + Modell-Schätzung, Untergrenze); feine, dezente, verzweigte Adern; Arme in feinen Würfeln | v25-veins-fine.png |
+| v26 | 26.09.2026 | Muskel-Definition bei niedrigem KFA (Rinnen zwischen Muskelgruppen, Sixpack); Standard-Würfel 0,75 cm | v26-muscle-definition.png |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

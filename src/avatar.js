@@ -122,6 +122,34 @@ function muscleLabels(H, normals) {
   return label;
 }
 
+// Muscle definition: distance (m, rest body) from every point to the nearest border between two
+// muscle groups (deltoid / chest, biceps / triceps, quads / adductors ...). At low body fat these
+// borders show as fine grooves. Computed once with a 2 cm grid.
+function grooveDistances(H, labels) {
+  const N = 13380, F = H.faces, border = new Uint8Array(N);
+  for (let t = 0; t < F.length / 3; t++) {
+    const a = F[t * 3], b = F[t * 3 + 1], c = F[t * 3 + 2];
+    if (a >= N || b >= N || c >= N) continue;
+    for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+      if (labels[p] >= 0 && labels[q] >= 0 && labels[p] !== labels[q]) border[p] = border[q] = 1;
+    }
+  }
+  const P = (v, k) => H.base[v * 3 + k] * 0.1, G = 0.02, grid = new Map();
+  const key = (x, y, z) => `${Math.floor(x / G)},${Math.floor(y / G)},${Math.floor(z / G)}`;
+  for (let v = 0; v < N; v++) if (border[v]) { const k = key(P(v, 0), P(v, 1), P(v, 2)); (grid.get(k) || grid.set(k, []).get(k)).push(v); }
+  const out = new Float32Array(H.N).fill(1);
+  for (let v = 0; v < N; v++) {
+    const x = P(v, 0), y = P(v, 1), z = P(v, 2);
+    const gx = Math.floor(x / G), gy = Math.floor(y / G), gz = Math.floor(z / G);
+    let d = 1;
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+      for (const u of grid.get(`${gx + i},${gy + j},${gz + k}`) || []) d = Math.min(d, Math.hypot(P(u, 0) - x, P(u, 1) - y, P(u, 2) - z));
+    }
+    out[v] = d;
+  }
+  return out;
+}
+
 // points that belong to fat depots (for the "fat" tissue view)
 function fatVerts(H) {
   const set = new Set();
@@ -276,6 +304,7 @@ gl_Position = projectionMatrix * mvPosition;`;
     this.vertHand = Uint8Array.from({ length: H.N }, (_, v) => (/^(hand|thumb|index|middle|ring|pinky)/.test(H.bones[H.skinIdx[v * 4]].name) ? 1 : 0));
     // ear points = the points the "ear scale" targets move clearly (> 25 % of their largest move);
     // the ears are never painted with hair
+    this.grooveDist = grooveDistances(H, this.labels);
     this.vertEar = new Uint8Array(H.N);
     for (const name of ['ears/l-ear-scale-incr', 'ears/r-ear-scale-incr']) {
       const T = H.targets[name];
@@ -480,7 +509,8 @@ gl_Position = projectionMatrix * mvPosition;`;
         const isEye = H.faceGroup[cb.tri] > 0;
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
-        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], tissue, occ: cb.occ, size, ctx });
+        const gd = this.grooveDist, groove = gd[a] * w0 + gd[b] * cb.u + gd[c] * cb.v; // distance to a muscle border
+        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], tissue, occ: cb.occ, size, ctx });
         const jw = worldOf[jn];
         (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nrm.clone(), v: vMain });
         if (res) extra.push({ jn, size, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
@@ -554,7 +584,7 @@ gl_Position = projectionMatrix * mvPosition;`;
 
   // ---- colors: returns { layers, color } when extra hair/beard volume is wanted ----
   colorCube(out, q) {
-    const { jn, x, y, z, n, isEye, hand, ear, tissue, occ, ctx } = q;
+    const { jn, x, y, z, n, isEye, hand, ear, groove, label, tissue, occ, ctx } = q;
     const c = this.body.colors, look = this.body.look, o = look.outfit;
     const { face, W, L, s } = ctx;
     const E = face.eye;
@@ -706,6 +736,9 @@ gl_Position = projectionMatrix * mvPosition;`;
       if (k > 0) color = new THREE.Color(c.skin).lerp(VEIN_COLOR, 0.16 + 0.16 * k).multiplyScalar(0.97 - 0.05 * k).getHex();
       else if (k < 0) color = new THREE.Color(c.skin).multiplyScalar(1 - 0.04 * k).getHex();
     }
+    // muscle definition at low body fat: fine grooves between muscle groups, the six-pack
+    // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
+    if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx);
     if (special) out.copy(special); else out.set(color);
     // tint: where fat / muscle was added or removed
     if (this.composition.tint) {
@@ -826,6 +859,31 @@ gl_Position = projectionMatrix * mvPosition;`;
         list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: col.clone().multiplyScalar(streak), n });
       }
     }
+  }
+
+  // Light/shadow factor for muscle definition (1 = none)
+  definition(x, y, z, n, groove, label, ctx) {
+    const lean = this.fat.percent - (1 - (this.person.gender ?? 0.5)) * 8 - 3 * Math.max(0, this.composition.muscle);
+    const def = Math.min(1, Math.max(0, (20 - lean) / 12)); // from ~20 % (men) on, full at ~8 %
+    if (def <= 0) return 1;
+    const { W, s } = ctx;
+    const w = 0.006 * s;
+    let g = groove < 0.03 ? Math.exp(-((groove / w) ** 2)) : 0;
+    // six-pack: only on the front of the belly
+    if (GROUP_IDS[label] === 'abs' && n.z > 0.5) {
+      const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
+      const ax = Math.abs(x), navel = yh + 0.12 * s, top = ys - 0.17 * s;
+      if (ax < 0.078 * s && y > yh - 0.01 * s && y < top) {
+        g = Math.max(g, Math.exp(-((ax / (0.0045 * s)) ** 2)));                 // linea alba
+        for (let i = 0; i < 3; i++) {                                           // tendon lines, slightly zig-zag
+          const ly = navel + (i + (i ? 0.1 : 0)) * ((top - navel) / 3) + 0.006 * s * (ax / (0.078 * s)) * (i % 2 ? -1 : 1);
+          if (y > navel - 0.01 * s) g = Math.max(g, 0.85 * Math.exp(-(((y - ly) / (0.005 * s)) ** 2)));
+        }
+        g = Math.max(g, Math.exp(-(((ax - 0.08 * s) / (0.006 * s)) ** 2))); // outer edge of the six-pack
+      }
+    }
+    const belly = groove > 0.012 ? Math.min(1, (groove - 0.012) / 0.02) : 0;
+    return (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
   }
 
   // How strongly a vein shows at this skin point (0 = none .. 1)

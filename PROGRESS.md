@@ -269,3 +269,9 @@
   median, back of hand, cephalic in the biceps groove, biceps vein only very lean, calf); thin (1-2 fine cubes,
   tapering at the ends), meandering, subtle blue-grey (not purple) with a slightly lighter edge (raised look).
   Upper arms now also in 0.5 cm cubes (~55k cubes, ~215 ms). Accuracy all <= 1.2 cm. Screenshot v25-veins-fine.png.
+- Round 2 (v26): muscle definition at low body fat. Per point the distance to the nearest border between two muscle
+  groups (from the MakeHuman muscle labels, 2 cm grid, once) -> fine grooves there (deltoid / chest, biceps / triceps,
+  quads / adductors ...), muscle bellies a touch lighter; six-pack on the straight belly muscle: center line, 3 tendon
+  lines, outer edge. Starts at ~20 % body fat (men; women +8; more muscle = earlier), full at ~8 %. Bare skin only.
+  At 1 cm cubes the lines were blotchy -> default cube size now 0.75 cm (details 0.375 / 0.25 cm): 98.5k cubes,
+  ~430 ms build on desktop; 1 cm stays selectable ("schneller"). Accuracy all <= 1.3 cm. v26-muscle-definition.png.
