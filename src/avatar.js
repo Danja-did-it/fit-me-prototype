@@ -705,7 +705,11 @@ vCube = position / (0.5 * vCubeSize);`;
         ? y > Ea.top + 0.006 * s - 0.004 * s * Math.max(0, (Ea.back - z) / (0.02 * s)) || (z < Ea.back - 0.004 * s && y > E.y - 0.05 * s)
         : y > E.y + 0.012 * s);
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
-      if (style !== 'none' && jn === 'head' && !ear && !onEar && (hairTop || hairBack || hairSide || bangs)) {
+      // game afro: sideburns in front of the ears, down to below the shades (1 extra cube layer)
+      const sideburn = game && style === 'afro' && ax > 0.05 * s && y > E.y - 0.035 * s && y < E.y + 0.03 * s &&
+        z < E.z - 0.02 * s && z > (Ea ? Ea.front : E.z - 0.06 * s);
+      if (style !== 'none' && jn === 'head' && !ear && !onEar && sideburn) result = { layers: 1, color: c.hair };
+      if (style !== 'none' && jn === 'head' && !ear && !onEar && (hairTop || hairBack || hairSide || bangs || sideburn)) {
         color = c.hair; // scalp under the hair volume (see addHair)
         // fade / undercut: sides and back shaved -> stubble, darker toward the top
         if (style === 'fade' && y < E.y + 0.045 * s) {
@@ -960,7 +964,7 @@ vCube = position / (0.5 * vCubeSize);`;
     for (const [key, l] of Object.entries(byJoint)) {
       if (!key.startsWith('head|')) continue;
       for (const r of l) {
-        if (r.v === undefined) continue; // skin cubes only (not hair)
+        if (r.v === undefined || this.vertEar[r.v]) continue; // face skin cubes only (not hair, not the ears)
         const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2];
         if (Math.abs(y - E.y) > 1.5 * V || z < E.z - 0.03 * s) continue;
         if (Math.abs(x) < E.x + 0.02 * s) zf = Math.max(zf, z);
@@ -1115,10 +1119,13 @@ vCube = position / (0.5 * vCubeSize);`;
     const { face, W, s } = ctx;
     const look = this.body.look.hair, E = face.eye;
     const st = HAIR_STYLES[look.style] || HAIR_STYLES.short;
-    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (this.style === 'game' && st.curly ? 1.35 : 1);
+    // game style afro (like the concept): taller than wide, clumpy outline, a fringe down to the shades
+    const game = this.style === 'game', gAfro = game && st.cover === 'afro';
+    const ox = this.grid.head; // x offset of the head cube grid
+    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.05 : 1);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
-    const R = [0.083 * s, 0.108 * s + top, 0.103 * s];   // skull radii (just under the hair)
+    const R = [0.083 * s * (gAfro ? 0.85 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
     const chin = face.chinY, shoulder = W.shoulderL[1];
     let bottom = { nape: E.y - 0.045 * s, chin: chin - 0.005 * s, shoulder: shoulder - 0.14 * s, ear: E.y - 0.035 * s, top: E.y + 0.045 * s }[st.bottom];
     // real length from the hair scan (medium / long only)
@@ -1187,13 +1194,20 @@ vCube = position / (0.5 * vCubeSize);`;
       }
       if (st.cover === 'top' && (Math.abs(x) > 0.066 * s || (frontZ < -0.02 * s && y < E.y + 0.075 * s))) return false; // undercut: top only
       if (st.quiff) t += 0.022 * s * Math.min(1, Math.max(0, frontZ / R[2] + 0.1)) * Math.min(1, Math.max(0, (y - E.y - 0.04 * s) / (0.05 * s)));
-      if (st.curly) { const cs = (this.style === 'game' ? 0.024 : 0.012) * s; t *= (this.style === 'game' ? 0.65 : 0.8) + (this.style === 'game' ? 0.7 : 0.4) * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
+      if (st.curly && game) {
+        // curl clumps of 1-2 cube steps, and on ~20 % of the surface a 2x2 knob sticks out one more cube
+        const cs = 0.034 * s, kc = 2 * V;
+        t *= 0.72 + 0.56 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7);
+        if (hash(Math.floor((x - ox) / kc), Math.floor(y / kc), Math.floor(z / kc), 9) > 0.8) t += 1.1 * V;
+      } else if (st.curly) { const cs = 0.012 * s; t *= 0.8 + 0.4 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
       // strand clumps: every strand lies a little higher or lower -> light and shadow show the strands
       else if (st.thick >= 0.009) t *= 0.8 + 0.3 * hash(strandOf(x, z), 8, 1, 2);
       const r = rad(x, y, z);
       if (r < 1 || r > 1 + t / R[0]) return false;
       // face opening: no hair in front of the face below the hair line (unless fringe)
-      const hairLine = look.bangs || st.bangs ? E.y + (st.bangs ? 0.02 : 0.012) * s : ctx.hairLine(x);
+      let hairLine = look.bangs || st.bangs ? E.y + (st.bangs ? 0.02 : 0.012) * s : ctx.hairLine(x);
+      // game afro: a fringe with a ragged lower edge, ending 0-1 cube above the top of the shades
+      if (gAfro) hairLine = (Math.floor(E.y / V) + 2 + (hash(Math.floor((x - ox) / V), 0, 0, 11) > 0.6 ? 0 : 1)) * V;
       if (frontZ > 0.03 * s && y < hairLine) return false;
       if (close) {
         // sides only above the ears, back down to a tapered nape
@@ -1206,7 +1220,7 @@ vCube = position / (0.5 * vCubeSize);`;
       if (y < C[1] && frontZ > 0.02 * s) return false;
       return true;
     };
-    let maxT = thick * 2.1;
+    let maxT = thick * 2.1 + (gAfro ? 2 * V : 0);
     if (prof) for (let y = bottom; y < C[1] + R[1] + 0.08 * s; y += 0.005) maxT = Math.max(maxT, outlineT(y) ?? 0);
     const inHair = (x, y, z) => inShell(x, y, z) || (st.tail && inTail(x, y, z)) || (st.bun && inBun(x, y, z));
     const hw = worldOf.head, key = 'head|' + V;
@@ -1215,7 +1229,11 @@ vCube = position / (0.5 * vCubeSize);`;
     const x0 = -R[0] - reach, x1 = -x0, z0 = Math.min(C[2] - R[2] - reach, st.tail ? tailB[2] - 0.03 * s : Infinity), z1 = C[2] + R[2] + reach;
     const yLo = Math.min(bottom - 0.045 * s, st.tail ? tailB[1] - 0.02 * s : Infinity);
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;
-    const ox = this.grid.head, snapX = (v) => (Math.floor((v - ox) / V) + 0.5) * V + ox; // on the head grid
+    const snapX = (v) => (Math.floor((v - ox) / V) + 0.5) * V + ox; // on the head grid
+    // game style hair colors: near-black base with a darker / lighter value per cube, a mid tone on some
+    // clumps, and warm highlights ONLY on upward-facing clumps (no speckle over the whole hair)
+    const mid = col.clone().multiplyScalar(1.25), hiC = col.clone().multiplyScalar(1.15);
+    hiC.setRGB(Math.max(hiC.r, 0.068), Math.max(hiC.g, 0.034), Math.max(hiC.b, 0.018)); // at least ~#4a3324 (linear values)
     for (let y = snap(yLo); y < C[1] + R[1] + reach; y += V) {
       for (let x = snapX(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
         if (!inHair(x, y, z)) continue;
@@ -1244,7 +1262,15 @@ vCube = position / (0.5 * vCubeSize);`;
         }
         // hair tie where the bun meets the head
         if (onBun && z > bunC[2] + 0.012 * s) streak *= 0.55;
-        const hc = st.curly && this.style === 'game' && streak > 1.5 ? col.clone().lerp(new THREE.Color(0x7a5230), 0.6) : col.clone().multiplyScalar(streak);
+        let hc = col.clone().multiplyScalar(streak);
+        if (game) {
+          const cell = [Math.floor((x - ox) / V), Math.floor(y / V), Math.floor(z / V)];
+          const hv = hash(...cell, 5), hk = hash(Math.floor((x - ox) / (2 * V)), Math.floor(y / (2 * V)), Math.floor(z / (2 * V)), 6);
+          if (st.curly) {
+            const up = !inHair(x, y + V, z); // top face of a clump is free
+            hc = (up && hk > 0.6 && n.y > 0.45 ? hiC : hk > 0.4 && hk < 0.6 ? mid : col).clone().multiplyScalar(0.8 + 0.3 * hv);
+          } else hc = col.clone().multiplyScalar((0.9 + 0.12 * hash(strandOf(x, z), 1, 2, 3)) * (onBun && z > bunC[2] + 0.012 * s ? 0.55 : 1)); // even strands, the cube tops catch the light
+        }
         list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: hc, n });
       }
     }
