@@ -722,6 +722,7 @@ function showLook(body) {
   $('top').value = o.top === 'none' ? 'none' : o.sleeves === 'long' ? 'long' : o.sleeves === 'none' ? 'tank' : 'short';
   $('bottoms').value = o.bottoms;
   $('shoes').checked = !!o.shoes;
+  syncRail();
   for (const [id, key] of Object.entries(COLOR_INPUTS)) $(id).value = hexColor(body.colors[key]);
   const f = scans.face;
   if (f) {
@@ -769,6 +770,25 @@ function updateLook(e) {
   applyScans();
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accChain', 'accWatch', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
+
+// Accessory rail on the stage: each button drives its control in the Style tab (the control stays the truth)
+let lastTop = 'short'; // the rail's shirt button toggles "Oben ohne" <-> the last worn top
+function syncRail() {
+  for (const b of document.querySelectorAll('.rail-btn')) {
+    const el = $(b.dataset.for);
+    b.setAttribute('aria-pressed', String(el.type === 'checkbox' ? el.checked : el.value !== 'none'));
+  }
+  if ($('top').value !== 'none') lastTop = $('top').value;
+}
+for (const b of document.querySelectorAll('.rail-btn')) {
+  b.addEventListener('click', () => {
+    const el = $(b.dataset.for);
+    if (el.type === 'checkbox') el.checked = !el.checked;
+    else el.value = el.value === 'none' ? lastTop : 'none';
+    el.dispatchEvent(new Event('change'));
+  });
+}
+for (const id of ['top', 'accGlasses', 'accChain', 'accWatch', 'shoes']) $(id).addEventListener('change', syncRail);
 // Style: Voxel-Double (game look, chunky 2.8 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
 function applyStyle() {
   avatar.style = $('style').value;
