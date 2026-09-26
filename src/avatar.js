@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { MUSCLES, GROUPS, muscleGain } from './anatomy.js';
 import { loadHuman, mix, macroWeights, poseBody, jointPos, ourJoint } from './human.js';
 import { voxelize, vertexNormals } from './voxelize.js';
+import { bodyFat } from './fit.js';
 
 export const VOXEL_SIZES = [0.04, 0.02, 0.015, 0.01, 0.0075, 0.005];
 const BODY_VERTS = 13380;
@@ -138,6 +139,34 @@ function fatVerts(H) {
 // Hairstyles: shell thickness (m at 1.75 m body height), how far down, which extras.
 //   cover 'short' = sides above the ears + tapered nape, 'full' = hangs down, 'afro' = big round
 const UP = new THREE.Vector3(0, 1, 0);
+// ---- veins: visible at low body fat ----
+// Each vein runs in a limb frame (joint A -> joint B): t along the bone (beyond 1 = hand),
+// phi = angle around the bone (0 = front, + = outer side, - = inner side). It shows below a
+// body fat % (men; women +8), stronger the leaner. Anatomy: forearm cephalic / basilic / median
+// veins with the diagonal median cubital vein in the elbow pit, the back-of-hand network, the
+// cephalic vein in the outer biceps groove, great saphenous vein inside the calf.
+const VEINS = {
+  fore: [
+    { t: [0.08, 0.95], phi: (t) => 0.95 - 0.35 * t, kfa: 12 },
+    { t: [0.1, 0.9], phi: (t) => -1.15 + 0.25 * t, kfa: 11 },
+    { t: [0.14, 0.75], phi: (t) => 0.05 + 0.22 * Math.sin(6 * t), kfa: 9.5 },
+    { t: [0.0, 0.14], phi: (t) => -0.95 + 13 * t, kfa: 12 },
+    { t: [1.03, 1.3], phi: (t) => 1.2 + 0.9 * (t - 1.03), kfa: 15 },
+    { t: [1.03, 1.3], phi: (t) => 1.9 - 0.7 * (t - 1.03), kfa: 15 },
+  ],
+  upper: [
+    { t: [0.3, 1.0], phi: (t) => 1.05 - 0.75 * t, kfa: 10 },
+    { t: [0.55, 1.0], phi: () => -1.25, kfa: 9 },
+    { t: [0.35, 0.85], phi: (t) => 0.1 + 0.12 * Math.sin(7 * t), kfa: 7.5 },
+  ],
+  calf: [
+    { t: [0.05, 0.9], phi: (t) => -1.35 + 0.2 * t, kfa: 11 },
+    { t: [0.25, 0.75], phi: (t) => 2.6 - 0.3 * t, kfa: 8 },
+  ],
+};
+const VEIN_COLOR = new THREE.Color(0x3d5a80);
+
+
 export const HAIR_STYLES = {
   none: { label: 'Glatze' },
   buzz: { label: 'Buzzcut', thick: 0.0035, cover: 'short', bottom: 'nape' },
@@ -242,7 +271,7 @@ gl_Position = projectionMatrix * mvPosition;`;
     this.labels = muscleLabels(H, this.restNormals);
     this.fatSet = fatVerts(H);
     this.vertJoint = Array.from({ length: H.N }, (_, v) => ourJoint(H.bones[H.skinIdx[v * 4]].name));
-    const detailBone = (n) => /^(head|neck_01|hand|thumb|index|middle|ring|pinky)/.test(n);
+    const detailBone = (n) => /^(head|neck_01|lowerarm|hand|thumb|index|middle|ring|pinky)/.test(n); // forearms fine too: veins
     this.vertDetail = Uint8Array.from({ length: H.N }, (_, v) => (detailBone(H.bones[H.skinIdx[v * 4]].name) ? 1 : 0));
     this.vertHand = Uint8Array.from({ length: H.N }, (_, v) => (/^(hand|thumb|index|middle|ring|pinky)/.test(H.bones[H.skinIdx[v * 4]].name) ? 1 : 0));
     // ear points = the points the "ear scale" targets move clearly (> 25 % of their largest move);
@@ -333,6 +362,7 @@ gl_Position = projectionMatrix * mvPosition;`;
 
     const H = this.H, V = this.voxel;
     const { pos, W } = this.shape();
+    this.fat = bodyFat(this, pos, W); // body fat estimate (Navy formula) -> veins, measures table
 
     // ---- joint tree (bind pose = mesh pose, no rotation) ----
     const joints = (this.joints = {});
@@ -385,7 +415,8 @@ gl_Position = projectionMatrix * mvPosition;`;
       // hands with half-size cubes
       const Vh = V / 3;
       passes.push([Vh, voxelize(pos, F, Vh, boxOf(isHead), (t) => triDetail[t] && isHead(F[t * 3]))]);
-      for (const test of [(v) => this.vertHand[v] && this.vertJoint[v] === 'elbowL', (v) => this.vertHand[v] && this.vertJoint[v] === 'elbowR']) {
+      // forearms + hands with half-size cubes (fine enough for fingers and forearm veins)
+      for (const test of [(v) => this.vertDetail[v] && this.vertJoint[v] === 'elbowL', (v) => this.vertDetail[v] && this.vertJoint[v] === 'elbowR']) {
         passes.push([Vd, voxelize(pos, F, Vd, boxOf(test), (t) => triDetail[t] && test(F[t * 3]))]);
       }
     } else passes.push([V, voxelize(pos, F, V)]);
@@ -668,6 +699,11 @@ gl_Position = projectionMatrix * mvPosition;`;
         special = new THREE.Color(c.skin).multiplyScalar(0.6);
       }
     }
+    // veins on bare skin when the body fat is low
+    if (!special && color === c.skin && this.fat && !head) {
+      const k = this.veinAt(jn, x, y, z, n, hand, ctx);
+      if (k > 0) color = new THREE.Color(c.skin).lerp(VEIN_COLOR, 0.3 + 0.25 * k).multiplyScalar(0.94 - 0.06 * k).getHex(); // visible as soon as it shows, stronger when leaner
+    }
     if (special) out.copy(special); else out.set(color);
     // tint: where fat / muscle was added or removed
     if (this.composition.tint) {
@@ -788,6 +824,44 @@ gl_Position = projectionMatrix * mvPosition;`;
         list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: col.clone().multiplyScalar(streak), n });
       }
     }
+  }
+
+  // How strongly a vein shows at this skin point (0 = none .. 1)
+  veinAt(jn, x, y, z, n, hand, ctx) {
+    const { W, s } = ctx;
+    const fat = this.fat.percent - (1 - (this.person.gender ?? 0.5)) * 8 - 1.5 * Math.max(0, this.composition.muscle);
+    if (fat > 15) return 0; // above the leanest threshold (hand veins): no veins at all
+    const side = x > 0 ? 'L' : 'R';
+    let A, B, list;
+    if (jn === 'elbow' + side) [A, B, list] = [W['elbow' + side], W['hand' + side], VEINS.fore];
+    else if (jn === 'shoulder' + side && !hand) [A, B, list] = [W['shoulder' + side], W['elbow' + side], VEINS.upper];
+    else if (jn === 'knee' + side) [A, B, list] = [W['knee' + side], W['ankle' + side], VEINS.calf];
+    else if ((jn === 'hips' || jn === 'spine') && n.z > 0.35) {
+      // lower belly: the "V" veins from the hip bones toward the groin
+      const yh = (W.hipL[1] + W.hipR[1]) / 2, ax = Math.abs(x);
+      const t = (yh + 0.15 * s - y) / (0.11 * s); // from beside the navel down toward the groin
+      if (t < 0 || t > 1) return 0;
+      const lx = 0.085 * s - 0.045 * s * t + 0.006 * s * Math.sin(t * 3.1);
+      return Math.abs(ax - lx) < 0.0055 * s ? Math.min(1, Math.max(0, (8.5 - fat) / 4)) : 0;
+    } else return 0;
+    const d = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], dl = Math.hypot(...d), dh = d.map((v) => v / dl);
+    const rel = [x - A[0], y - A[1], z - A[2]], t = (rel[0] * dh[0] + rel[1] * dh[1] + rel[2] * dh[2]) / dl;
+    const r = rel.map((v, i) => v - dh[i] * t * dl), rr = Math.hypot(...r);
+    // front axis = world front without the bone part, outer axis = away from the body
+    let f = [-dh[2] * dh[0], -dh[2] * dh[1], 1 - dh[2] * dh[2]];
+    const fl = Math.hypot(...f); f = f.map((v) => v / fl);
+    let o = [Math.sign(x) - dh[0] * dh[0] * Math.sign(x), -dh[1] * dh[0] * Math.sign(x), -dh[2] * dh[0] * Math.sign(x)];
+    const ol = Math.hypot(...o); o = o.map((v) => v / ol);
+    const phi = Math.atan2(r[0] * o[0] + r[1] * o[1] + r[2] * o[2], r[0] * f[0] + r[1] * f[1] + r[2] * f[2]);
+    let best = 0;
+    for (const v of list) {
+      if (t < v.t[0] || t > v.t[1] || fat > v.kfa) continue;
+      const vp = v.phi(t) + 0.06 * Math.sin(t * 23 + v.kfa); // a little meandering
+      let dp = Math.abs(phi - vp);
+      if (dp > Math.PI) dp = 2 * Math.PI - dp;
+      if (dp * rr < 0.006 * s) best = Math.max(best, Math.min(1, (v.kfa - fat) / 4));
+    }
+    return best;
   }
 
   get voxelCount() {

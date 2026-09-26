@@ -343,6 +343,11 @@ function rebuild() {
     const muscle = s.slow + s.fast;
     $('stats').textContent = `${n(avatar.voxelCount)} Würfel (${Math.round(avatar.buildMs)} ms) · sichtbar: ` +
       `${n(muscle)} Muskel (${muscle ? Math.round((s.slow / muscle) * 100) : 0} % langsam), ${n(s.fat)} Fett`;
+    // body fat estimate from the model's girths (US Navy formula) - veins show when it is low
+    const f = avatar.fat, pct = f ? f.percent.toFixed(1).replace('.', ',') : null;
+    const lean = f && f.percent - (1 - avatar.person.gender) * 8 - 1.5 * Math.max(0, avatar.composition.muscle);
+    $('kfa').textContent = f ? `Körperfettanteil ≈ ${pct} % (Schätzung aus Hals-, Taillen- und Hüftumfang, Navy-Formel)` +
+      (lean <= 15 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : '';
   });
 }
 

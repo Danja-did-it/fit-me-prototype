@@ -249,3 +249,14 @@
   average face 13.9 mm, old estimate 15.3 mm, v21 fit n/a (scale-free), new fit 8.7 mm (6.9 without prior; the prior
   keeps real photos natural: without it the sample portrait got bloated cheeks at +-1 values).
 - Known: the photo body outline includes the hair -> face size ~1 % low. ~4-9 s in the headless test (no GPU).
+
+## Iteration 13: veins at low body fat (user: muscles with veins at low body fat %)
+- Body fat % estimate: US Navy formula from tape-measure girths of the model (slice + convex hull perimeter):
+  neck (narrowest), waist at the navel (men) / narrowest (women), hips (widest); gender slider blends both formulas.
+  Default man ~12 %, woman ~26 %; follows the fat / muscle sliders. Shown under the fat slider.
+- Veins painted on bare skin in limb frames (angle around the bone): forearm cephalic / basilic / median + diagonal
+  median cubital vein in the elbow pit, back of the hand, cephalic vein in the outer biceps groove, a vein over the
+  biceps, basilic vein, great + small saphenous at the calf, lower-belly "V" veins. Each has a threshold (men 7.5-15 %,
+  women +8, more muscle = shows earlier) and gets stronger the leaner.
+- Forearms now use the half-size cubes like the hands (veins as lines, not blotches): 42.6k -> 47.5k cubes, 187 -> 222 ms.
+- Accuracy unchanged (all <= 1.0 cm). Screenshot: docs/screenshots/v24-veins.png.

@@ -253,3 +253,56 @@ export function faceTargets(face) {
   }
   return out;
 }
+
+// ---- body fat estimate (US Navy method) from tape-measure girths of the model ----
+// A tape measure spans the convex outline of a cross-section, so: slice the mesh at a height,
+// take the convex hull of the contour points (x, z), and its perimeter.
+function hullPerimeter(pts) {
+  if (pts.length < 3) return 0;
+  pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [], upper = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  let per = 0;
+  for (let i = 0; i < hull.length; i++) { const a = hull[i], b = hull[(i + 1) % hull.length]; per += Math.hypot(a[0] - b[0], a[1] - b[1]); }
+  return per;
+}
+export function girth(av, pos, y, test) {
+  const F = av.H.faces, pts = [];
+  for (let t = 0; t < F.length / 3; t++) {
+    const vs = [F[t * 3], F[t * 3 + 1], F[t * 3 + 2]];
+    if (vs.some((v) => v >= 13380) || !test(vs[0])) continue;
+    for (let e = 0; e < 3; e++) {
+      const p = vs[e], q = vs[(e + 1) % 3], yp = pos[p * 3 + 1], yq = pos[q * 3 + 1];
+      if ((yp - y) * (yq - y) > 0 || yp === yq) continue;
+      const f = (y - yp) / (yq - yp);
+      pts.push([pos[p * 3] + (pos[q * 3] - pos[p * 3]) * f, pos[p * 3 + 2] + (pos[q * 3 + 2] - pos[p * 3 + 2]) * f]);
+    }
+  }
+  return hullPerimeter(pts);
+}
+// Body fat % (US Navy formula, girths in cm): men waist at the navel - neck; women waist (narrowest)
+// + hips - neck. The gender slider blends both.
+export function bodyFat(av, pos, W) {
+  const J = av.vertJoint, H = av.body.height, s = H / 1.75;
+  const torso = (v) => J[v] === 'hips' || J[v] === 'spine' || J[v] === 'chest';
+  const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, yh = (W.hipL[1] + W.hipR[1]) / 2;
+  // neck: narrowest girth between the shoulders and the mouth (like the neck width, measureModel)
+  const mouthY = (W.eyeL[1] + W.eyeR[1]) / 2 - 0.07 * s;
+  const nearNeck = (v) => (J[v] === 'neck' || J[v] === 'head' || J[v] === 'chest') && Math.abs(pos[v * 3]) < 0.09 * s;
+  let neck = Infinity;
+  for (let t = 0.3; t <= 0.85; t += 0.05) { const g = girth(av, pos, ys + t * (mouthY - ys), nearNeck); if (g > 0.2) neck = Math.min(neck, g); }
+  const navel = girth(av, pos, yh + 0.1 * s, torso);
+  let narrow = Infinity;
+  for (let t = 0.45; t <= 0.85; t += 0.05) { const g = girth(av, pos, ys - t * (ys - yh), torso); if (g > 0) narrow = Math.min(narrow, g); }
+  let hip = 0;
+  for (let d = -0.02; d <= 0.08; d += 0.01) hip = Math.max(hip, girth(av, pos, yh - d * s, (v) => torso(v) || /^hip[LR]$/.test(J[v])));
+  if (!Number.isFinite(neck) || !navel || !hip) return null;
+  const cm = (m) => m * 100, h = cm(H);
+  const men = 495 / (1.0324 - 0.19077 * Math.log10(cm(navel) - cm(neck)) + 0.15456 * Math.log10(h)) - 450;
+  const women = 495 / (1.29579 - 0.35004 * Math.log10(cm(narrow) + cm(hip) - cm(neck)) + 0.221 * Math.log10(h)) - 450;
+  const g = av.person?.gender ?? 0.5;
+  return { percent: Math.max(3, Math.min(50, women + (men - women) * g)), neck, waist: navel, hip };
+}
