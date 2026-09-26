@@ -44,7 +44,8 @@ window.camera = camera; window.controls = controls; // for the test script
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.3;
-scene.add(new THREE.HemisphereLight(0xffffff, 0x4a4440, 0.3));
+const hemi = new THREE.HemisphereLight(0xffffff, 0x4a4440, 0.3);
+scene.add(hemi);
 const key = new THREE.DirectionalLight(0xfffaf4, 2.3);
 key.position.set(1.6, 3.2, 2.6);
 key.castShadow = true;
@@ -60,6 +61,11 @@ scene.add(fill);
 const rim = new THREE.DirectionalLight(0xffffff, 0.9);
 rim.position.set(-0.5, 2.5, -3);
 scene.add(rim);
+// second rim light: only used by the game stage (intensity 0 in the realistic one). Both stages keep the
+// same lights, so switching the style never recompiles the shaders.
+const rim2 = new THREE.DirectionalLight(0xffb070, 0);
+rim2.position.set(2.2, 2.6, -2.2);
+scene.add(rim2);
 
 // Round floor that catches the shadow
 const floor = new THREE.Mesh(
@@ -69,6 +75,53 @@ const floor = new THREE.Mesh(
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
+
+// Game stage (Voxel-Double): warm sunset backdrop as a vertical gradient (glow behind head and shoulders)
+// and a larger, darker floor whose edge fades out (radial alpha), like the concept image.
+const canvasTex = (w, h, paint) => {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  paint(c.getContext('2d'), w, h);
+  return new THREE.CanvasTexture(c);
+};
+const sunset = canvasTex(2, 512, (g, w, h) => {
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  for (const [t, col] of [[0, '#161a2a'], [0.3, '#2e2a45'], [0.48, '#a86a55'], [0.56, '#e0925e'], [0.64, '#5a3c3a'], [0.72, '#2a201d'], [1, '#121012']]) grad.addColorStop(t, col);
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+});
+sunset.colorSpace = THREE.SRGBColorSpace;
+const fade = canvasTex(256, 256, (g, w, h) => {
+  const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  grad.addColorStop(0, '#fff'); grad.addColorStop(0.55, '#fff'); grad.addColorStop(1, '#000');
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+});
+const floorGame = new THREE.Mesh(
+  new THREE.CircleGeometry(2.2, 64),
+  new THREE.MeshStandardMaterial({ color: 0x2b211d, roughness: 0.55, metalness: 0.15, alphaMap: fade, transparent: true })
+);
+floorGame.rotation.x = -Math.PI / 2;
+floorGame.receiveShadow = true;
+scene.add(floorGame);
+
+// The two stages: realistic = neutral studio (as before), game = warm key light from the upper left, warm
+// orange rim lights from behind (edge on shoulders and hair), a weak cool fill, less reflection, more contrast
+const STAGES = {
+  real: { bg: new THREE.Color(0x1b1e24), exposure: 1.12, env: 0.3, hemi: [0xffffff, 0x4a4440, 0.3],
+    key: [0xfffaf4, 2.3, [1.6, 3.2, 2.6]], fill: [0xf2f4ff, 0.75, [-2.5, 1.8, 1.5]], rim: [0xffffff, 0.9, [-0.5, 2.5, -3]], rim2: [0xffb070, 0, [2.2, 2.6, -2.2]] },
+  game: { bg: sunset, exposure: 1.25, env: 0.2, hemi: [0xffd8b0, 0x2a1a12, 0.5],
+    key: [0xffe0c2, 3.4, [-1.4, 3.2, 2.4]], fill: [0x8ea2d8, 0.45, [2.5, 1.2, 1.8]], rim: [0xff8c42, 3.8, [-2.4, 2.2, -2.0]], rim2: [0xffb070, 1.8, [2.2, 2.6, -2.2]] },
+};
+function setStage(style) {
+  const S = STAGES[style] || STAGES.real;
+  scene.background = S.bg;
+  renderer.toneMappingExposure = S.exposure;
+  scene.environmentIntensity = S.env;
+  hemi.color.set(S.hemi[0]); hemi.groundColor.set(S.hemi[1]); hemi.intensity = S.hemi[2];
+  for (const [light, [color, intensity, p]] of [[key, S.key], [fill, S.fill], [rim, S.rim], [rim2, S.rim2]]) {
+    light.color.set(color); light.intensity = intensity; light.position.set(...p);
+  }
+  floor.visible = style !== 'game';
+  floorGame.visible = style === 'game';
+}
 
 // The voxel avatar
 const avatar = new Avatar();
@@ -503,7 +556,7 @@ function rebuild() {
     const f = avatar.fat, pct = f ? f.percent.toFixed(1).replace('.', ',') : null;
     const lean = f && f.percent - (1 - avatar.person.gender) * 8 - 1.5 * Math.max(0, avatar.composition.muscle);
     $('kfa').textContent = f ? `Körperfettanteil ≈ ${pct} % (Schätzung aus Hals-, Taillen- und Hüftumfang, Navy-Formel)` +
-      (lean <= 16 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : '';
+      (avatar.style === 'game' ? '' : lean <= 16 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : ''; // veins: realistic style only
   });
 }
 
@@ -630,13 +683,15 @@ for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accC
 // Style: Voxel-Double (game look, chunky 2.8 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
 function applyStyle() {
   avatar.style = $('style').value;
+  setStage(avatar.style);
   $('voxel').value = avatar.style === 'game' ? '0.028' : '0.0075';
   composeLook(); // outfit / accessories / palette depend on the style
   showLook(avatar.body);
   updateComposition();
 }
 $('style').addEventListener('change', applyStyle);
-window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE }; // for scripts/validate.mjs
+setStage($('style').value);
+window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE, STAGES, setStage }; // for scripts (validate.mjs, checks)
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
 
@@ -681,7 +736,7 @@ async function runDemo() {
   camera.position.set(0, 1.15, 3.6); controls.target.set(0, 0.95, 0);
   const steps = [
     async () => { say('Fit-me macht aus 2 Handyfotos deinen 3D-Körper – Würfel für Würfel. Alles wird auf deinem Gerät berechnet, nichts hochgeladen.'); await wait(5000); },
-    async () => { say('Weniger Körperfett, mehr Muskeln …'); await tween(-80, 80, 2400); say('Weniger Körperfett, mehr Muskeln: Muskeldefinition und Adern werden sichtbar' + kfa() + '.'); await wait(3500); },
+    async () => { say('Weniger Körperfett, mehr Muskeln …'); await tween(-80, 80, 2400); say('Weniger Körperfett, mehr Muskeln: ' + (avatar.style === 'game' ? 'Muskeldefinition wird sichtbar' : 'Muskeldefinition und Adern werden sichtbar') + kfa() + '.'); await wait(3500); },
     async () => { say('… und so mit mehr Körperfett.'); await tween(70, 0, 2400); say('… und so mit mehr Körperfett' + kfa() + '.'); await wait(2500); },
     async () => { $('fat').value = 0; $('muscle').value = 40; $('view').value = 'groups'; updateComposition(); say('Jede Muskelgruppe einzeln: sieh, welche Muskeln dein Training aufbaut.'); await wait(4000); },
     async () => { $('view').value = 'look'; $('muscle').value = 20; updateComposition(); token.spin = false; avatar.root.rotation.y = 0; setMode('walk'); say('Dein Avatar bewegt sich: Gehen …'); await wait(3000); setMode('squat'); say('… Kniebeuge.'); await wait(3800); },

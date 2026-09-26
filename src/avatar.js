@@ -660,8 +660,9 @@ vCube = position / (0.5 * vCubeSize);`;
     const E = face.eye;
     const head = jn === 'head' || jn === 'neck';
     // crease shading: gentle on face and hands (otherwise it reads like dirt)
-    let shade = Math.min(1.05, Math.max(0.55, 1.18 - 0.7 * occ));
-    if (head || hand) shade = 1 - (1 - shade) * (this.style === 'game' && head ? 0.08 : 0.4); // game: flat, clean face
+    // game style: stronger baked ambient occlusion (the concept's soft shadows in the creases)
+    let shade = game ? Math.min(1.08, Math.max(0.42, 1.28 - 1.05 * occ)) : Math.min(1.05, Math.max(0.55, 1.18 - 0.7 * occ));
+    if (head || hand) shade = 1 - (1 - shade) * (game && jn === 'head' ? 0.08 : 0.4); // game: flat, clean face
     const jitter = 0.985 + hash(Math.round(x * 400), Math.round(y * 400), Math.round(z * 400), 3) * 0.03;
     let result = null;
 
@@ -852,8 +853,9 @@ vCube = position / (0.5 * vCubeSize);`;
         result = { layers: 1, color };
       }
     }
-    // veins on bare skin when the body fat is low
-    if (!special && color === c.skin && this.fat && !head) {
+    // veins on bare skin when the body fat is low (not in the game style: at game cube sizes they are
+    // single stray cubes, not lines)
+    if (!game && !special && color === c.skin && this.fat && !head) {
       const k = this.veinAt(jn, x, y, z, n, hand, ctx);
       // vein: subtle blue-grey line, stronger when leaner; its edge a touch lighter (raised, catches light)
       if (k > 0) color = new THREE.Color(c.skin).lerp(VEIN_COLOR, 0.16 + 0.16 * k).multiplyScalar(0.97 - 0.05 * k).getHex();
@@ -862,6 +864,11 @@ vCube = position / (0.5 * vCubeSize);`;
     // muscle definition at low body fat: fine grooves between muscle groups, the six-pack
     // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
     if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size);
+    // game style crease shadows: the neck under the big head, the skin row just above the waistband
+    if (game && !special && color === c.skin) {
+      if (jn === 'neck') shade *= 0.7;
+      else if ((jn === 'spine' || jn === 'hips' || jn === 'chest') && o.bottoms !== 'short' && y > ctx.waistY && y <= ctx.waistY + q.size) shade *= 0.6;
+    }
     if (special) out.copy(special); else out.set(color);
     // game style: a little variation per cube (skin: value and a touch of hue, pants a bit more), so the
     // surfaces read as single cubes like in the concept
