@@ -404,8 +404,10 @@ vCube = position / (0.5 * vCubeSize);`;
     this.root.clear();
 
     const H = this.H, V = this.voxel;
-    const { pos, W } = this.shape();
+    let { pos, W } = this.shape();
     this.fat = bodyFat(this, pos, W); // body fat estimate (Navy formula) -> veins, measures table
+    this.chibiShift = 0;
+    if (this.style === 'game') ({ pos, W } = this.chibify(pos, W)); // Voxel-Double proportions
 
     // ---- joint tree (bind pose = mesh pose, no rotation) ----
     const joints = (this.joints = {});
@@ -546,6 +548,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
+    if (this.body.look.acc?.glasses) this.addGlasses(byJoint, worldOf, ctx, V >= 0.0075 ? (this.style === 'game' ? V / 2 : V / 3) : V); // head cube size
     if (this.style === 'game') this.stylize(byJoint, worldOf, ctx);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
@@ -607,7 +610,7 @@ vCube = position / (0.5 * vCubeSize);`;
     const head = jn === 'head' || jn === 'neck';
     // crease shading: gentle on face and hands (otherwise it reads like dirt)
     let shade = Math.min(1.05, Math.max(0.55, 1.18 - 0.7 * occ));
-    if (head || hand) shade = 1 - (1 - shade) * 0.4;
+    if (head || hand) shade = 1 - (1 - shade) * (this.style === 'game' && head ? 0.08 : 0.4); // game: flat, clean face
     const jitter = 0.985 + hash(Math.round(x * 400), Math.round(y * 400), Math.round(z * 400), 3) * 0.03;
     let result = null;
 
@@ -672,21 +675,8 @@ vCube = position / (0.5 * vCubeSize);`;
           color = new THREE.Color(c.brow).lerp(new THREE.Color(0x201510), 0.5).getHex(); // lash line
         }
       }
-      // accessory: sunglasses (blocky shades like in voxel games) - lenses over both eyes, bridge, arms
-      const acc = look.acc || {};
-      if (acc.glasses && jn === 'head') {
-        const gx = ax - E.x, gy = y - E.y - 0.002 * s;
-        const lens = (gx / (0.025 * s)) ** 4 + (gy / (0.0135 * s)) ** 4;
-        const bridge = ax < E.x - 0.02 * s && Math.abs(gy - 0.005 * s) < 0.0028 * s && n.z > 0.3;
-        const arm = ax > 0.058 * s && Math.abs(gy - 0.007 * s) < 0.0028 * s && z < E.z + 0.005 * s && z > E.z - 0.075 * s;
-        if ((lens < 1 && n.z > 0.25) || bridge || arm) {
-          eyeDecal = false; special = null;
-          color = lens < 0.72 && !bridge && !arm ? (gy > 0.004 * s ? 0x252b36 : 0x14171c) : 0x0b0b0c; // lens with a light top edge, frame
-          result = { layers: 1, color };
-        }
-      }
       // real face from the photo (brows, lips, beard shadow, skin tone): replaces the painted brows / lips
-      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal && !result ? this.faceMap.lookup(x, y, z) : null;
+      const fm = this.faceMap && jn === 'head' && n.z > 0.2 && !eyeDecal && !result ? this.faceMap.lookup(x, y - this.chibiShift, z) : null; // the photo map knows the real head position
       const photoW = fm ? fm.weight * Math.min(1, (n.z - 0.2) / 0.3) : 0;
       // eyebrows: scanned shape (thickness, arch, start + end), else a thin default arch
       const ex = ax - E.x;
@@ -774,9 +764,17 @@ vCube = position / (0.5 * vCubeSize);`;
         if (special === DETAIL.sole || special === DETAIL.sock) special = null;
       }
     }
+    // game style: belt with a silver buckle and a white cross logo on the right thigh (street wear)
+    if (this.style === 'game' && o.bottoms === 'long' && color === c.shorts) {
+      if (y > ctx.waistY - 0.03 * s && y <= ctx.waistY + 0.005 * s) color = ax < 0.022 * s && n.z > 0.6 ? 0xcfd3d8 : 0x0c0c0e;
+      const lx = x - W.hipR[0], ly = y - (W.hipR[1] - 0.13 * s);
+      if (n.z > 0.3 && jn === 'hipR' && ((Math.abs(lx) < 0.008 * s && Math.abs(ly) < 0.042 * s) || (Math.abs(ly - 0.016 * s) < 0.008 * s && Math.abs(lx) < 0.026 * s))) color = 0xeeeeee;
+    }
     // game style: long pants are baggy (street style) - extra cube layers, wider below the knee
     if (this.style === 'game' && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn) && !result) {
       result = { layers: /^knee/.test(jn) ? 2 : 1, color };
+    } else if (this.style === 'game' && o.bottoms === 'long' && jn === 'hipR' && color === 0xeeeeee) {
+      result = { layers: 1, color }; // the logo sits on the baggy outer layer
     }
     // accessories: chain around the neck (with a small pendant), watch on the left wrist
     const acc = look.acc || {};
@@ -821,17 +819,70 @@ vCube = position / (0.5 * vCubeSize);`;
     return result;
   }
 
+  // Sunglasses as their own flat, blocky part in front of the face (like voxel game shades): a bar over
+  // both eyes, 2 cubes thick, slightly lighter top row, arms back to the ears. Straight edges - painting
+  // them on the curved face made them look ragged.
+  addGlasses(byJoint, worldOf, ctx, V) {
+    const { face, s } = ctx, E = face.eye, hw = worldOf.head;
+    const list = (byJoint['head|' + V] ||= []);
+    // front of the face over the eyes: highest z of the head cubes in that area
+    let zf = -Infinity;
+    for (const [key, l] of Object.entries(byJoint)) {
+      if (!key.startsWith('head|')) continue;
+      for (const r of l) {
+        const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2];
+        if (Math.abs(x) < E.x + 0.02 * s && Math.abs(y - E.y) < 0.012 * s) zf = Math.max(zf, z);
+      }
+    }
+    if (!Number.isFinite(zf)) return;
+    const snap = (v) => (Math.floor(v / V) + 0.5) * V;
+    const halfW = E.x + 0.037 * s, y0 = E.y - 0.016 * s, y1 = E.y + 0.019 * s; // big shades: brow to cheek, a bit wider than the face
+    const n = new THREE.Vector3(0, 0, 1), dark = new THREE.Color(0x0c0d10), top = new THREE.Color(0x2c323c), frame = new THREE.Color(0x050506);
+    for (let x = snap(-halfW); x <= halfW; x += V) for (let y = snap(y0); y <= y1; y += V) {
+      if (Math.abs(x) < 0.01 * s && y < E.y + 0.002 * s) continue; // notch over the nose
+      for (let k = 1; k <= 2; k++) {
+        const c = (k === 2 && y > y1 - V * 1.5 ? top : k === 1 ? frame : dark).clone();
+        list.push({ p: [x - hw[0], y - hw[1], snap(zf) + (k - 1) * V - hw[2]], c, n });
+      }
+    }
+    // arms: from the outer edge straight back toward the ears
+    for (const sx of [-1, 1]) for (let z = snap(zf); z > zf - 0.08 * s; z -= V) {
+      list.push({ p: [sx * snap(halfW) - hw[0], snap(E.y + 0.01 * s) - hw[1], z - hw[2]], c: frame.clone(), n: new THREE.Vector3(sx, 0, 0) });
+    }
+  }
+
+  // Voxel-Double proportions (game avatars are compact: short legs, short torso, short arms, big head).
+  // The real, scanned body is squeezed in height piece by piece, joints too, so animation and all
+  // painting stay consistent; the head is only moved down (the photo face map is corrected by
+  // chibiShift) and made bigger later on the finished cubes (stylize).
+  chibify(pos, W) {
+    const KL = 0.72, KT = 0.85, KA = 0.8;
+    const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
+    const f = (y) => (y < yh ? y * KL : y < ys ? yh * KL + (y - yh) * KT : yh * KL + (ys - yh) * KT + (y - ys));
+    const arm = (y) => (y < ys ? f(ys) - (ys - y) * KA : f(y));
+    const out = new Float32Array(pos);
+    for (let v = 0; v < this.H.N; v++) {
+      const y = pos[v * 3 + 1];
+      out[v * 3 + 1] = /^(shoulder|elbow)/.test(this.vertJoint[v]) ? arm(y) : f(y);
+    }
+    const W2 = {};
+    for (const [k, w] of Object.entries(W)) W2[k] = [w[0], /^(shoulder|elbow|hand)/.test(k) ? arm(w[1]) : f(w[1]), w[2]];
+    this.chibiShift = f(ys) - ys;
+    return { pos: out, W: W2 };
+  }
+
   // Voxel-Double game style (like voxel avatars in games): bigger head, a bit thicker neck, chunkier
   // shoes. Done on the finished cubes (positions spread out from a pivot, cubes grown by the same
   // factor), so all measuring, fitting and painting keeps the real body.
   stylize(byJoint, worldOf, ctx) {
-    const HEAD = 1.75, NECK = 1.18, FEET = 1.2;
+    const HEAD = 2.4, NECK = 1.25, FEET = 1.4, ARM = 1.2;
     const out = {};
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
       const jw = worldOf[name];
       let k = [1, 1, 1], pivot = null;
-      if (name === 'head') { k = [HEAD, HEAD, HEAD]; pivot = [jw[0], ctx.face.chinY, jw[2]]; } // grows up from the chin
+      if (name === 'head') { k = [HEAD * 1.08, HEAD, HEAD]; pivot = [jw[0], ctx.face.chinY, jw[2]]; } // grows up from the chin, a bit boxier
+      else if (/^(shoulder|elbow)[LR]$/.test(name)) { k = [ARM, 1, ARM]; pivot = jw; } // thicker arms
       else if (name === 'neck') { k = [NECK, 1, NECK]; pivot = jw; }
       else if (name === 'ankleL' || name === 'ankleR') { k = [FEET, FEET, FEET]; pivot = [jw[0], 0, jw[2]]; }
       if (!pivot) { const o = (out[key] ||= []); for (const r of list) o.push(r); continue; }
@@ -882,7 +933,11 @@ vCube = position / (0.5 * vCubeSize);`;
           const x = (ix + 0.5) * V, y = (iy + 0.5) * V, z = (iz + 0.5) * V;
           const up = !inShoe(ix, iy + 1, iz);
           const n = new THREE.Vector3(ix - cx, up ? 3 : 0.3, (iz - cz) * 0.6).normalize();
-          const c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
+          let c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
+          // sneaker details: grey side stripe, laces on top toward the toes
+          const side = Math.abs(ix - cx) > 1.2 && !up, fwd = iz - cz;
+          if (side && y > 0.02 * s && y < 0.036 * s && fwd > -2 && fwd < 3) c = new THREE.Color(0xb9bdc4);
+          if (up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4 && y > 0.03 * s) c = new THREE.Color(0xd8dade).multiplyScalar(iz % 2 ? 1 : 0.9);
           list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c, n });
         }
       }
@@ -968,7 +1023,7 @@ vCube = position / (0.5 * vCubeSize);`;
       }
       if (st.cover === 'top' && (Math.abs(x) > 0.066 * s || (frontZ < -0.02 * s && y < E.y + 0.075 * s))) return false; // undercut: top only
       if (st.quiff) t += 0.022 * s * Math.min(1, Math.max(0, frontZ / R[2] + 0.1)) * Math.min(1, Math.max(0, (y - E.y - 0.04 * s) / (0.05 * s)));
-      if (st.curly) { const cs = (this.style === 'game' ? 0.02 : 0.012) * s; t *= 0.8 + 0.4 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
+      if (st.curly) { const cs = (this.style === 'game' ? 0.024 : 0.012) * s; t *= (this.style === 'game' ? 0.65 : 0.8) + (this.style === 'game' ? 0.7 : 0.4) * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
       // strand clumps: every strand lies a little higher or lower -> light and shadow show the strands
       else if (st.thick >= 0.009) t *= 0.8 + 0.3 * hash(strandOf(x, z), 8, 1, 2);
       const r = rad(x, y, z);
@@ -1008,7 +1063,11 @@ vCube = position / (0.5 * vCubeSize);`;
         if (!st.curly && st.thick >= 0.009) n.applyAxisAngle(UP, (hash(strandOf(x, z), 4, 4, 4) - 0.5) * 0.7).normalize();
         // strands: slight vertical streaks; curls: blotchy light/dark
         let streak;
-        if (st.curly) streak = 0.78 + 0.3 * hash(Math.round(x / (V * 2)), Math.round(y / (V * 2)), Math.round(z / (V * 2)), 5);
+        if (st.curly) {
+          // curls: blotchy, with a few lighter brown strands catching the light (voxel game afro)
+          const hv = hash(Math.round(x / (V * 2)), Math.round(y / (V * 2)), Math.round(z / (V * 2)), 5);
+          streak = hv > 0.86 && this.style === 'game' ? 1.9 : 0.75 + 0.35 * hv;
+        }
         else {
           // one shade per strand (strands run from the crown down), a little variation along it
           streak = 0.8 + 0.22 * hash(strandOf(x, z), 1, 2, 3) + 0.05 * hash(strandOf(x, z), Math.round(y / (0.02 * s)), 5, 6);
@@ -1020,7 +1079,8 @@ vCube = position / (0.5 * vCubeSize);`;
         }
         // hair tie where the bun meets the head
         if (onBun && z > bunC[2] + 0.012 * s) streak *= 0.55;
-        list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: col.clone().multiplyScalar(streak), n });
+        const hc = st.curly && this.style === 'game' && streak > 1.5 ? col.clone().lerp(new THREE.Color(0x7a5230), 0.6) : col.clone().multiplyScalar(streak);
+        list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: hc, n });
       }
     }
   }
@@ -1048,7 +1108,7 @@ vCube = position / (0.5 * vCubeSize);`;
       }
     }
     const belly = groove > 0.012 ? Math.min(1, (groove - 0.012) / 0.02) : 0;
-    return game ? (1 - 0.36 * def * g) * (1 + 0.07 * def * belly) : (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
+    return game ? (1 - 0.5 * def * g) * (1 + 0.1 * def * belly) : (1 - 0.26 * def * g) * (1 + 0.035 * def * belly);
   }
 
   // How strongly a vein shows at this skin point (0 = none .. 1)

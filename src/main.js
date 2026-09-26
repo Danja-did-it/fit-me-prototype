@@ -598,7 +598,7 @@ for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accC
 // Style: Voxel-Double (game look, chunky 1.5 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
 function applyStyle() {
   avatar.style = $('style').value;
-  $('voxel').value = avatar.style === 'game' ? '0.015' : '0.0075';
+  $('voxel').value = avatar.style === 'game' ? '0.02' : '0.0075';
   updateComposition();
 }
 $('style').addEventListener('change', applyStyle);

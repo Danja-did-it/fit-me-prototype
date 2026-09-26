@@ -357,3 +357,16 @@
 - validate.mjs renders its virtual people in the realistic style (they must look like real people). Accuracy all
   <= 1.6 cm. Screenshots v36-voxel-double.png, v36-voxel-double-face.png.
 - Not yet from the concept: pants logo, cap / hoodie / outfit shop, app screens (level/XP, plan, nutrition, stats).
+- v37 (user: compare with the concept yourself, go on until it is clearly more similar). Compared side by side with
+  the concept (docs/screenshots/target-voxel-double-hero.png) after each step:
+  * proportions: the concept is ~2.6 heads tall -> "chibify" before voxelizing: legs x0.72, torso x0.85, arms x0.8
+    (from the shoulder), joints moved the same way (animation + painting stay consistent), head only shifted (photo face
+    map corrected by chibiShift), then head x2.4 (x1.08 wider, grows up from the chin), neck x1.25, arms x1.2 thicker,
+    sneakers x1.4; cube size 2 cm (face ~1.4 cm).
+  * sunglasses as a flat 2-cube slab in front of the face (painted ones looked ragged on the curved face), big like in
+    the concept; flat face shading; afro with coarse curls and brown highlights; stronger blocky six-pack; belt with a
+    silver buckle, white cross logo on the right thigh, sneakers with grey side stripe + laces.
+  * a scanned face is projected as a pixel-art portrait onto the big head (sample portrait: glasses frame, moustache,
+    mouth in place).
+  * Result: docs/screenshots/v37-voxel-double-vs-concept.png. Measuring / fit unchanged (validation in realistic
+    style: all <= 1.4 cm).
