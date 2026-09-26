@@ -260,3 +260,12 @@
   women +8, more muscle = shows earlier) and gets stronger the leaner.
 - Forearms now use the half-size cubes like the hands (veins as lines, not blotches): 42.6k -> 47.5k cubes, 187 -> 222 ms.
 - Accuracy unchanged (all <= 1.0 cm). Screenshot: docs/screenshots/v24-veins.png.
+
+## Loop 2 (user: near-perfect realistic voxel digitization; iPhone showed KFA 3.8 % and purple blotchy veins)
+- Round 1 (v25): body fat: the Navy formula on the model overreacts to the neck (more muscle = thicker neck = "leaner").
+  Now 50/50 with an estimate from the model's fat / weight / muscle settings, never below essential fat (men 5 %,
+  women 12 %). Man default 13.5 %, fat -35 / muscle +30 11.7 % (was ~4 %), very lean 8.1 %; woman 25.7 %.
+  Veins: fewer, anatomical, branched (forearm cephalic + branch, basilic, diagonal median cubital in the elbow pit,
+  median, back of hand, cephalic in the biceps groove, biceps vein only very lean, calf); thin (1-2 fine cubes,
+  tapering at the ends), meandering, subtle blue-grey (not purple) with a slightly lighter edge (raised look).
+  Upper arms now also in 0.5 cm cubes (~55k cubes, ~215 ms). Accuracy all <= 1.2 cm. Screenshot v25-veins-fine.png.

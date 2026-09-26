@@ -347,7 +347,7 @@ function rebuild() {
     const f = avatar.fat, pct = f ? f.percent.toFixed(1).replace('.', ',') : null;
     const lean = f && f.percent - (1 - avatar.person.gender) * 8 - 1.5 * Math.max(0, avatar.composition.muscle);
     $('kfa').textContent = f ? `Körperfettanteil ≈ ${pct} % (Schätzung aus Hals-, Taillen- und Hüftumfang, Navy-Formel)` +
-      (lean <= 15 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : '';
+      (lean <= 16 ? ` · Adern sichtbar${lean <= 9 ? ' (deutlich)' : ''}` : ' · Adern ab niedrigem KFA') : '';
   });
 }
 

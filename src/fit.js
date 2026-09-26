@@ -304,5 +304,14 @@ export function bodyFat(av, pos, W) {
   const men = 495 / (1.0324 - 0.19077 * Math.log10(cm(navel) - cm(neck)) + 0.15456 * Math.log10(h)) - 450;
   const women = 495 / (1.29579 - 0.35004 * Math.log10(cm(narrow) + cm(hip) - cm(neck)) + 0.221 * Math.log10(h)) - 450;
   const g = av.person?.gender ?? 0.5;
-  return { percent: Math.max(3, Math.min(50, women + (men - women) * g)), neck, waist: navel, hip };
+  // The Navy formula on the model reacts strongly to the neck (more muscle = thicker neck = "leaner"),
+  // so it is blended with an estimate from the model's own fat / weight / muscle settings, and never
+  // goes below essential fat (men 5 %, women 12 %).
+  const navy = women + (men - women) * g;
+  const c = av.composition || {}, f = av.fit || {};
+  const fatGain = (c.fat || 0) > 0 ? c.fat : 0.5 * (c.fat || 0);
+  const macro = 25 - 10 * g + 22 * ((f.weight ?? 0.5) - 0.5) + 14 * fatGain - 6 * ((f.muscle ?? 0.5) - 0.5) - 2 * (c.muscle || 0);
+  const floor = 12 - 7 * g;
+  const percent = Math.max(floor, Math.min(50, 0.5 * navy + 0.5 * macro));
+  return { percent, navy, macro, neck, waist: navel, hip };
 }
