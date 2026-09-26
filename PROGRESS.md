@@ -315,3 +315,18 @@
   tour with captions: 2 photos -> voxel body on the device (avatar turns), less fat + more muscle (definition, veins,
   body fat %), more fat, muscle groups view, walking + squat, call to scan. Any touch on the 3D view (or the button)
   stops it and restores the sliders. Screenshot v32-demo-mobile.png.
+
+## Iteration 14: camera fix + voice guide (user: camera keeps firing, testing alone hardly possible; add a robot female voice)
+- Causes: the guided capture fired by itself after 25 s, needed only ~1 s of a good pose (fired while still walking
+  back), had no lock (several taps = several capture loops firing again and again) and no re-check.
+- Now: one capture at a time (buttons locked, "Abbrechen" button); fires only when the pose is right AND you stand still
+  (landmark movement < 1.5 % of the height) for 1.5 s (time based: same on fast and slow phones); the pose is checked
+  again at every countdown step (lost -> "Position verloren", restart); never fires on a timeout (after 90 s it gives
+  up without a photo).
+- Voice (src/voice.js): browser speech (offline on iPhone), German female voice, pitch 1.3 ("robot" style) + two-tone
+  beep before each instruction, shutter sound; instructions, live tips (not repeated within 4 s), 3-2-1, "Foto
+  aufgenommen". Switch "Sprachansage".
+- "Geführter Scan (Front → Seite → Rücken)": hands-free sequence for scanning yourself.
+- Test with a virtual person streamed as the camera (canvas.captureStream instead of getUserMedia): nobody in the
+  picture -> no photo; person steps in -> "Bitte still stehen" -> "Gut so" -> 3-2-1 -> 4 photos -> "Foto aufgenommen";
+  no suitable pose -> gives up with a spoken message.

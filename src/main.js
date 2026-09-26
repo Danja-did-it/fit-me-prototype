@@ -9,6 +9,7 @@ import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
 import { Animator } from './anim.js';
 import { GROUPS } from './anatomy.js';
+import * as voice from './voice.js'; // spoken camera instructions
 // scan.js (MediaPipe, large) is loaded only when the user starts a scan -> faster first load
 const scanModule = () => import('./scan.js');
 
@@ -220,34 +221,124 @@ $('flipCam').addEventListener('click', async () => {
 });
 
 
-// Guided capture: live pose check on the camera image, then a burst of photos.
-// The live check uses the same tips as the photo check (scanQuality).
+// Guided capture: live pose check on the camera image, spoken instructions, then a burst of
+// photos. It only fires when the pose is right AND you stand still for 1.5 s, checks again during
+// the countdown, never fires by itself after a timeout, and only one capture can run at a time.
 const BURST = 4;
-async function guidedCapture(view, hint) {
+const VIEW_INTRO = {
+  front: 'Stell dich frontal zur Kamera, zwei bis drei Meter entfernt. Arme leicht vom Körper weg.',
+  side: 'Dreh dich um neunzig Grad, eine Schulter zeigt zur Kamera. Arme locker hängen lassen.',
+  back: 'Dreh dich mit dem Rücken zur Kamera. Arme leicht vom Körper weg.',
+};
+let capture = null; // running capture: { cancelled }
+const capButtons = ['snapFront', 'snapBack', 'snapSide', 'guidedAll', 'camBtn', 'flipCam'];
+function setCapturing(on) {
+  for (const id of capButtons) $(id).disabled = on || (id.startsWith('snap') && !cameraOn);
+  $('cancelCap').hidden = !on;
+}
+$('cancelCap').addEventListener('click', () => { if (capture) capture.cancelled = true; });
+$('voiceOn').addEventListener('change', () => voice.setVoiceEnabled($('voiceOn').checked));
+
+async function guidedCapture(view, hint, token = null) {
+  if (capture && capture !== token) return false; // already running
+  const own = !token;
+  const job = token || (capture = { cancelled: false });
+  if (own) setCapturing(true);
   const { captureFrame, quickPose, scanQuality } = await scanModule();
   const el = $('countdown'), box = video.parentElement;
-  const say = (t, ok) => { el.textContent = t; el.style.fontSize = t.length > 3 ? '17px' : ''; box.dataset.ok = ok ? '1' : '0'; };
-  setStatus(hint);
-  let good = 0;
-  const until = performance.now() + 25000; // after 25 s we take the photos anyway
-  while (cameraOn && performance.now() < until && good < 2) {
+  const show = (t, ok) => { el.textContent = t; el.style.fontSize = t.length > 3 ? '17px' : ''; box.dataset.ok = ok ? '1' : '0'; };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const alive = () => cameraOn && !job.cancelled;
+  const check = async () => {
     const lm = await quickPose(captureFrame(video));
-    const tips = lm ? scanQuality({ landmarks: lm }, view === 'back' ? 'front' : view) : ['Kein Körper erkannt – ganz ins Bild stellen.'];
-    good = tips.length ? 0 : good + 1;
-    say(tips.length ? tips[0] : 'Pose passt ✓ – still halten', !tips.length);
-    await new Promise((r) => setTimeout(r, 450));
+    const tips = lm ? scanQuality({ landmarks: lm }, view === 'back' ? 'front' : view) : ['Ich sehe dich nicht. Stell dich ganz ins Bild, von Kopf bis Fuß.'];
+    return { lm, tips };
+  };
+  // movement between two checks (share of the body height)
+  const KEY = [0, 11, 12, 15, 16, 23, 24, 27, 28];
+  const moved = (a, b) => {
+    if (!a || !b) return 1;
+    const h = Math.abs(a[27].y - a[0].y) || 1;
+    return KEY.reduce((s, i) => s + Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y), 0) / KEY.length / h;
+  };
+  setStatus(hint);
+  voice.speak(VIEW_INTRO[view], { force: true });
+  let taken = false, prev = null, good = 0, goodSince = 0;
+  const until = performance.now() + 90000; // then give up - never fires by itself
+  try {
+    while (alive() && performance.now() < until && !taken) {
+      const { lm, tips } = await check();
+      const still = moved(lm, prev) < 0.015;
+      prev = lm;
+      if (tips.length) { good = 0; goodSince = 0; show(tips[0], false); if (!voice.speaking()) voice.speak(tips[0]); }
+      else if (!still) { good = 0; goodSince = 0; show('Bitte still stehen …', false); if (!voice.speaking()) voice.speak('Bitte still stehen.'); }
+      else {
+        good++;
+        goodSince ||= performance.now();
+        show('Pose passt ✓ – still halten', true);
+        if (good === 1) voice.speak('Gut so. Bitte still halten.', { force: true });
+      }
+      // right pose + still for 1.5 s (time based: works on fast and slow phones alike)
+      if (good < 2 || performance.now() - goodSince < 1500) { await wait(250); continue; }
+      // countdown, the pose is checked again at every step
+      let lost = false;
+      for (let s = 3; s > 0 && alive(); s--) {
+        show(String(s), true);
+        voice.speak(['', 'Eins', 'Zwei', 'Drei'][s], { force: true, withBeep: false });
+        await wait(800);
+        const r = await check();
+        if (r.tips.length || moved(r.lm, prev) > 0.03) { lost = true; break; }
+        prev = r.lm;
+      }
+      if (!alive()) break;
+      if (lost) { good = 0; goodSince = 0; show('Position verloren – nochmal', false); voice.speak('Position verloren. Nochmal von vorn.', { force: true }); await wait(1200); continue; }
+      // burst: several photos, the measurements use the median
+      const frames = [];
+      for (let i = 0; i < BURST && alive(); i++) { frames.push(captureFrame(video)); voice.shutterSound(); show('📸 ' + (i + 1) + '/' + BURST, true); await wait(250); }
+      show('', true); delete box.dataset.ok;
+      voice.speak('Foto aufgenommen.', { force: true });
+      for (const [i, f] of frames.entries()) await runScan(view, f, { apply: i === frames.length - 1 });
+      updateScanCount();
+      taken = true;
+    }
+    if (!taken) {
+      show('', false); delete box.dataset.ok;
+      const why = job.cancelled ? 'Aufnahme abgebrochen.' : 'Keine passende Pose erkannt. Aufnahme abgebrochen.';
+      setStatus(why); voice.speak(why, { force: true });
+    }
+  } finally {
+    if (own) { capture = null; setCapturing(false); }
   }
-  for (let s = 3; s > 0 && cameraOn; s--) { say(String(s), true); await new Promise((r) => setTimeout(r, 800)); }
-  // burst: several photos, the measurements use the median
-  const frames = [];
-  for (let i = 0; i < BURST && cameraOn; i++) { frames.push(captureFrame(video)); say('📸 ' + (i + 1) + '/' + BURST, true); await new Promise((r) => setTimeout(r, 250)); }
-  say('', true); delete box.dataset.ok;
-  for (const [i, f] of frames.entries()) await runScan(view, f, { apply: i === frames.length - 1 });
-  updateScanCount();
+  return taken;
 }
 for (const [view, id, hint] of [['front', 'snapFront', 'Frontal zur Kamera stellen, Arme etwas vom Körper weg …'], ['back', 'snapBack', 'Rücken zur Kamera drehen …'], ['side', 'snapSide', 'Seitlich zur Kamera stellen …']]) {
-  $(id).addEventListener('click', () => guidedCapture(view, hint));
+  $(id).addEventListener('click', () => { voice.unlockAudio(); guidedCapture(view, hint); });
 }
+
+// Hands-free guided scan: front -> side -> back with spoken instructions (for scanning yourself:
+// put the phone down upright at hip height, step back 2-3 m)
+$('guidedAll').addEventListener('click', async () => {
+  if (capture) return;
+  voice.unlockAudio();
+  if (!cameraOn) $('camBtn').click();
+  const job = (capture = { cancelled: false });
+  setCapturing(true);
+  try {
+    for (let t = 0; !cameraOn && t < 50; t++) await new Promise((r) => setTimeout(r, 100)); // wait for the camera
+    if (!cameraOn) return;
+    voice.speak('Geführter Scan. Stell das Handy aufrecht auf Hüfthöhe und geh zwei bis drei Meter zurück.', { force: true });
+    await new Promise((r) => setTimeout(r, 5500));
+    for (const [view, hint] of [['front', 'Front …'], ['side', 'Seite …'], ['back', 'Rücken …']]) {
+      if (job.cancelled || !cameraOn) break;
+      const ok = await guidedCapture(view, hint, job);
+      if (!ok) return;
+    }
+    if (!job.cancelled) { voice.speak('Fertig! Dein Avatar ist berechnet.', { force: true }); setStatus('Geführter Scan fertig ✓'); }
+  } finally {
+    capture = null;
+    setCapturing(false);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Measurements -> avatar
