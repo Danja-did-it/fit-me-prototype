@@ -237,7 +237,22 @@ export async function analyzeFace(image, pose) {
   const hairColor = hn ? (Math.round(HR / hn) << 16) | (Math.round(HG / hn) << 8) | Math.round(HB / hn) : brow;
   // hair length: where the side hair ends, relative to the chin (in face heights)
   const endBelowChin = (sideBottom - L[152].y) / fh;
-  const hairStyle = bald ? 'none' : endBelowChin > 0.9 ? 'long' : endBelowChin > -0.15 ? 'medium' : 'short';
+  const topVol = clamp((top - minY) / fh / 0.22, 0.4, 2), widthVol = clamp(maxW / fw / 1.15, 0.8, 1.6);
+  // hair beside the temples (between brows and eyes, just outside the face): little = shaved sides
+  let sideN = 0, sideH = 0;
+  const eyeLevel = (L[159].y + L[386].y) / 2;
+  for (let y = Math.round(browY - 0.05 * fh); y <= eyeLevel; y++) for (const [x0, x1] of [[faceL - 0.1 * fw, faceL], [faceR, faceR + 0.1 * fw]]) {
+    for (let x = Math.max(0, Math.round(x0)); x <= Math.min(CROP - 1, x1); x++) { sideN++; if (hairMask[y * CROP + x] > 0) sideH++; }
+  }
+  const sideCover = sideN ? sideH / sideN : 0;
+  const bangsSeen = bandN > 0 && bangs / bandN > 0.55;
+  // hairstyle (catalog: avatar.js HAIR_STYLES); ponytail / bun are not visible from the front -> manual
+  const hairStyle = bald ? 'none'
+    : widthVol >= 1.35 && topVol >= 1.35 ? 'afro'
+      : endBelowChin > 0.9 ? 'long'
+        : endBelowChin > -0.15 ? (bangsSeen ? 'bob' : 'medium')
+          : topVol < 0.55 ? 'buzz'
+            : sideCover < 0.3 && topVol >= 0.9 ? 'fade' : 'short';
   // hair line (center + temples) and side length, in units of the eye-to-chin distance
   // (so they scale with the head of the avatar)
   const eyeY = (L[159].y + L[386].y) / 2, eyeChin = L[152].y - eyeY;
@@ -260,9 +275,10 @@ export async function analyzeFace(image, pose) {
     lineTemple: lineTemple !== null ? clamp(lineTemple, 0.25, 1.8) : null,
     sideEnd: hn ? clamp((sideBottom - L[152].y) / eyeChin, -1.2, 4) : null, // side hair end below the chin
     style: hairStyle,
-    top: clamp((top - minY) / fh / 0.22, 0.4, 2),     // volume on top
-    width: clamp(maxW / fw / 1.15, 0.8, 1.6),          // volume at the sides
-    bangs: bandN > 0 && bangs / bandN > 0.55,
+    top: topVol,       // volume on top
+    width: widthVol,   // volume at the sides
+    sideCover,         // share of hair beside the temples (low = shaved sides)
+    bangs: bangsSeen,
   };
 
   // facial hair: chin / jaw / upper lip clearly darker than the cheeks

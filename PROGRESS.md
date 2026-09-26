@@ -225,3 +225,14 @@
   at strong bends. Knee in the deep squat much more closed (docs/screenshots/v21-squat-knee.png); stronger growth
   (1/shrink) did not help further - the last slits sit on the skin fold itself. Standing pose unchanged, accuracy
   unchanged (all <= 1.1 cm).
+
+## Iteration 11: hairstyles + realistic hair (user: define hairstyles; hair should lie properly, especially long)
+- Catalog avatar.js HAIR_STYLES (11): Glatze, Buzzcut, Kurz, Fade/Undercut, Tolle, Mittel, Bob mit Pony, Lang, Zopf,
+  Dutt, Afro/Locken. The "Frisur" menu is built from it. Scan (face.js) picks one of: none, buzz (little volume on top),
+  short, fade (little hair beside the temples: sideCover < 0.3), medium, bob (medium + fringe), long, afro (wide + high
+  volume). Ponytail / bun cannot be seen from the front -> manual choice.
+- Realism: hair is made of strands around the head, each with its own length (uneven natural ends, long hair a soft V
+  in the back), thickness (clumps) and slight turn of its light normal (single strands catch the light), one shade per
+  strand + a sheen ring on the curve of the head + a side parting. Long hair falls a little outward below the skull,
+  lies on the back below the chin and gets thinner toward the tips. Fade: sides as stubble fading darker upward.
+  Bun: ball on the back of the head with a hair tie. Screenshots: v22-hairstyles.png, v22-hair-long-bun.png.

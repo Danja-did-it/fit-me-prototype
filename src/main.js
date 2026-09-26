@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Avatar } from './avatar.js';
+import { Avatar, HAIR_STYLES } from './avatar.js';
 import { bodyFromScans } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
 import { Animator } from './anim.js';
@@ -386,6 +386,9 @@ for (const btn of document.querySelectorAll('#modes button')) {
 // "Individuell": hairstyle, beard and colors (prefilled from the face scan)
 // ---------------------------------------------------------------------------
 let manual = {}; // user overrides: { look: {...}, colors: {...} }
+// hairstyle list from the catalog (avatar.js HAIR_STYLES)
+$('hairStyle').innerHTML = Object.entries(HAIR_STYLES).map(([id, h]) => `<option value="${id}">${h.label}</option>`).join('');
+$('hairStyle').value = 'short';
 const hexColor = (c) => '#' + c.toString(16).padStart(6, '0');
 const COLOR_INPUTS = { colSkin: 'skin', colHair: 'hair', colEye: 'eye', colLip: 'lip', colShirt: 'shirt', colShorts: 'shorts' };
 

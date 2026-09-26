@@ -135,6 +135,23 @@ function fatVerts(H) {
   return set;
 }
 
+// Hairstyles: shell thickness (m at 1.75 m body height), how far down, which extras.
+//   cover 'short' = sides above the ears + tapered nape, 'full' = hangs down, 'afro' = big round
+const UP = new THREE.Vector3(0, 1, 0);
+export const HAIR_STYLES = {
+  none: { label: 'Glatze' },
+  buzz: { label: 'Buzzcut', thick: 0.0035, cover: 'short', bottom: 'nape' },
+  short: { label: 'Kurz', thick: 0.008, cover: 'short', bottom: 'nape' },
+  fade: { label: 'Fade / Undercut', thick: 0.013, cover: 'top', bottom: 'top' },
+  quiff: { label: 'Tolle', thick: 0.009, cover: 'short', bottom: 'nape', quiff: true },
+  medium: { label: 'Mittel (bis Kinn)', thick: 0.02, cover: 'full', bottom: 'chin' },
+  bob: { label: 'Bob mit Pony', thick: 0.018, cover: 'full', bottom: 'chin', bangs: true },
+  long: { label: 'Lang (über die Schultern)', thick: 0.022, cover: 'full', bottom: 'shoulder' },
+  ponytail: { label: 'Zopf', thick: 0.005, cover: 'short', bottom: 'nape', tail: true },
+  bun: { label: 'Dutt', thick: 0.005, cover: 'short', bottom: 'nape', bun: true },
+  afro: { label: 'Afro / Locken', thick: 0.042, cover: 'afro', bottom: 'ear', curly: true },
+};
+
 // ---------------------------------------------------------------------------
 export class Avatar {
   constructor(human = null) {
@@ -550,6 +567,11 @@ gl_Position = projectionMatrix * mvPosition;`;
       const bangs = look.hair.bangs && y > E.y + 0.03 * s && z > E.z;
       if (style !== 'none' && jn === 'head' && !ear && !onEar && (hairTop || hairBack || hairSide || bangs)) {
         color = c.hair; // scalp under the hair volume (see addHair)
+        // fade / undercut: sides and back shaved -> stubble, darker toward the top
+        if (style === 'fade' && y < E.y + 0.045 * s) {
+          const k = Math.min(1, Math.max(0, (y - (E.y - 0.04 * s)) / (0.085 * s)));
+          color = new THREE.Color(c.skin).lerp(new THREE.Color(c.hair), 0.25 + 0.45 * k).getHex();
+        }
       }
       // Eyes as a clean almond-shaped drawing on the face surface (the real eye opening is only
       // ~2 cubes high at 0.5 cm, so the eyeball behind it would barely show): white, iris in the
@@ -657,58 +679,111 @@ gl_Position = projectionMatrix * mvPosition;`;
     return result;
   }
 
-  // Hair volume around the skull: a shell of the given thickness that follows the head
-  // and then hangs straight down to the style's length. The face stays free.
-  //   short: 1.2 cm, down to the nape   medium: 2 cm, bob to the chin   long: 2.2 cm, over the shoulders
+  // Hair volume around the skull: a shell that follows the head and then hangs straight down
+  // to the style's length (HAIR_STYLES). The face stays free. Extra shapes: ponytail, bun,
+  // quiff (volume at the front top), afro (big round, curly surface).
   addHair(byJoint, worldOf, ctx, V) {
     const { face, W, s } = ctx;
     const look = this.body.look.hair, E = face.eye;
-    const style = look.style;
-    const thick = { short: 0.008, medium: 0.02, long: 0.022 }[style] * s * (0.8 + 0.2 * (look.width || 1));
+    const st = HAIR_STYLES[look.style] || HAIR_STYLES.short;
+    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1));
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
     const R = [0.083 * s, 0.108 * s + top, 0.103 * s];   // skull radii (just under the hair)
-    let bottom = style === 'short' ? E.y - 0.045 * s : style === 'medium' ? face.chinY - 0.005 * s : W.shoulderL[1] - 0.14 * s;
+    const chin = face.chinY, shoulder = W.shoulderL[1];
+    let bottom = { nape: E.y - 0.045 * s, chin: chin - 0.005 * s, shoulder: shoulder - 0.14 * s, ear: E.y - 0.035 * s, top: E.y + 0.045 * s }[st.bottom];
     // real length from the hair scan (medium / long only)
-    if (style !== 'short' && look.sideEnd != null) {
-      bottom = Math.min(E.y - 0.03 * s, Math.max(W.shoulderL[1] - 0.3 * s, face.chinY - look.sideEnd * (E.y - face.chinY)));
+    if ((look.style === 'medium' || look.style === 'long') && look.sideEnd != null) {
+      bottom = Math.min(E.y - 0.03 * s, Math.max(shoulder - 0.3 * s, chin - look.sideEnd * (E.y - chin)));
     }
     const col = new THREE.Color(this.body.colors.hair);
-    // radial distance (1 = skull surface); below the center the shape hangs straight down
+    // below the skull center the hair hangs; it falls a little outward (not a straight wall)
     const rad = (x, y, z) => {
-      const dy = Math.max(0, y - C[1]);
-      return Math.hypot(x / R[0], dy / R[1], (z - C[2]) / R[2]);
+      const flare = 1 + (st.cover === 'full' ? 0.1 * Math.min(1, Math.max(0, (C[1] - y) / (0.12 * s))) : 0);
+      return Math.hypot(x / (R[0] * flare), Math.max(0, y - C[1]) / R[1], (z - C[2]) / (R[2] * flare));
     };
-    const inHair = (x, y, z) => {
-      if (y < bottom || y > C[1] + R[1] + thick * 1.5) return false;
-      const r = rad(x, y, z), rOut = 1 + thick / R[0];
-      if (r < 1 || r > rOut) return false;
+    const close = st.cover === 'short'; // hair ends above the ears / at the nape
+    // ponytail: from the back of the head down to the shoulder blades; bun: ball at the back top
+    const tailA = [0, E.y + 0.03 * s, C[2] - R[2] - 0.004 * s], tailB = [0, shoulder - 0.06 * s, C[2] - R[2] - 0.035 * s];
+    const inTail = (x, y, z) => {
+      const d = [tailB[0] - tailA[0], tailB[1] - tailA[1], tailB[2] - tailA[2]];
+      const t = Math.max(0, Math.min(1, ((x - tailA[0]) * d[0] + (y - tailA[1]) * d[1] + (z - tailA[2]) * d[2]) / (d[0] ** 2 + d[1] ** 2 + d[2] ** 2)));
+      const r = 0.024 * s * (1 - 0.45 * t) * (t < 0.06 ? 0.7 : 1); // thinner at the hair tie
+      return Math.hypot(x - tailA[0] - d[0] * t, y - tailA[1] - d[1] * t, z - tailA[2] - d[2] * t) < r;
+    };
+    const bunC = [0, C[1] + 0.3 * R[1], C[2] - R[2] - 0.02 * s]; // sits on the back of the head
+    const inBun = (x, y, z) => Math.hypot(x - bunC[0], y - bunC[1], (z - bunC[2]) * 1.15) < 0.036 * s;
+    // strands around the head (angle around the vertical axis): each strand has its own length,
+    // long hair is longer in the back center (soft V) - natural, uneven ends instead of a cut edge
+    const full = st.cover === 'full';
+    const strandOf = (x, z) => Math.round(Math.atan2(x, z - C[2]) / (0.011 * s / R[0]));
+    const endY = (x, z) => {
+      if (!full) return bottom;
+      const a = Math.atan2(x, z - C[2]), back = Math.max(0, -Math.cos(a)); // 1 = back center
+      const vShape = look.style === 'long' ? 0.03 * s * back * back : 0.006 * s * back;
+      return bottom - vShape - (hash(strandOf(x, z), 3, 9, 4) - 0.5) * (st.bangs ? 0.006 : 0.024) * s;
+    };
+    const inShell = (x, y, z) => {
+      if (y > C[1] + R[1] + thick * 2.5 || y < endY(x, z)) return false;
       const frontZ = z - C[2];
+      let t = thick;
+      if (full && y < chin) {
+        // below the chin long hair lies on the back and gets thinner toward the tips
+        if (frontZ > -0.035 * s) return false;
+        t *= 1 - 0.45 * Math.min(1, (chin - y) / Math.max(0.01, chin - bottom));
+      }
+      if (st.cover === 'top' && (Math.abs(x) > 0.066 * s || (frontZ < -0.02 * s && y < E.y + 0.075 * s))) return false; // undercut: top only
+      if (st.quiff) t += 0.022 * s * Math.min(1, Math.max(0, frontZ / R[2] + 0.1)) * Math.min(1, Math.max(0, (y - E.y - 0.04 * s) / (0.05 * s)));
+      if (st.curly) t *= 0.85 + 0.3 * hash(Math.round(x / (0.012 * s)), Math.round(y / (0.012 * s)), Math.round(z / (0.012 * s)), 7);
+      // strand clumps: every strand lies a little higher or lower -> light and shadow show the strands
+      else if (st.thick >= 0.009) t *= 0.8 + 0.3 * hash(strandOf(x, z), 8, 1, 2);
+      const r = rad(x, y, z);
+      if (r < 1 || r > 1 + t / R[0]) return false;
       // face opening: no hair in front of the face below the hair line (unless fringe)
-      // natural hair line: a little higher at the temples
-      const hairLine = look.bangs ? E.y + 0.012 * s : ctx.hairLine(x);
+      const hairLine = look.bangs || st.bangs ? E.y + (st.bangs ? 0.02 : 0.012) * s : ctx.hairLine(x);
       if (frontZ > 0.03 * s && y < hairLine) return false;
-      // sides in front of the ears only above the temple for short hair
-      // short: sides only above the ears, back down to the nape
-      if (style === 'short' && frontZ > -0.03 * s && y < E.y + 0.03 * s) return false;
-      if (style === 'short' && Math.abs(x) > 0.05 * s && y < E.y + 0.012 * s) return false;
-      if (style === 'short' && y < E.y - 0.03 * s + 0.045 * s * Math.min(1, Math.abs(x) / (0.07 * s))) return false; // tapered nape
+      if (close) {
+        // sides only above the ears, back down to a tapered nape
+        if (frontZ > -0.03 * s && y < E.y + 0.03 * s) return false;
+        if (Math.abs(x) > 0.05 * s && y < E.y + 0.012 * s) return false;
+        if (y < E.y - 0.03 * s + 0.045 * s * Math.min(1, Math.abs(x) / (0.07 * s))) return false;
+      }
+      if (st.cover === 'afro' && frontZ > -0.02 * s && Math.abs(x) > 0.05 * s && y < E.y + 0.005 * s) return false; // ears free
       // below the skull center the hair is only behind / beside the head (not under the chin)
       if (y < C[1] && frontZ > 0.02 * s) return false;
       return true;
     };
+    const inHair = (x, y, z) => inShell(x, y, z) || (st.tail && inTail(x, y, z)) || (st.bun && inBun(x, y, z));
     const hw = worldOf.head, key = 'head|' + V;
     const list = (byJoint[key] ||= []);
-    const x0 = -R[0] - thick - V, x1 = -x0, z0 = C[2] - R[2] - thick - V, z1 = C[2] + R[2] + thick + V;
+    const reach = thick * 2.5 + (st.quiff ? 0.022 * s : 0) + V;
+    const x0 = -R[0] - reach, x1 = -x0, z0 = Math.min(C[2] - R[2] - reach, st.tail ? tailB[2] - 0.03 * s : Infinity), z1 = C[2] + R[2] + reach;
+    const yLo = Math.min(bottom - 0.045 * s, st.tail ? tailB[1] - 0.02 * s : Infinity);
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;
-    for (let y = snap(bottom); y < C[1] + R[1] + thick * 1.5; y += V) {
+    for (let y = snap(yLo); y < C[1] + R[1] + reach; y += V) {
       for (let x = snap(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
         if (!inHair(x, y, z)) continue;
         // only the outer shell of the hair volume
         if (inHair(x + V, y, z) && inHair(x - V, y, z) && inHair(x, y + V, z) && inHair(x, y - V, z) && inHair(x, y, z + V) && inHair(x, y, z - V)) continue;
         const n = new THREE.Vector3(x / R[0], Math.max(0, y - C[1]) / R[1], (z - C[2]) / R[2]).normalize();
-        // strands: slight vertical streaks
-        const streak = 0.86 + 0.14 * hash(Math.round(x / (V * 1.5)), Math.round(z / (V * 1.5)), 11, 2);
+        const onBun = st.bun && inBun(x, y, z) && !inShell(x, y, z);
+        if (onBun) n.set(x - bunC[0], y - bunC[1], z - bunC[2]).normalize();
+        // every strand turns its face a little: the light picks out single strands
+        if (!st.curly && st.thick >= 0.009) n.applyAxisAngle(UP, (hash(strandOf(x, z), 4, 4, 4) - 0.5) * 0.7).normalize();
+        // strands: slight vertical streaks; curls: blotchy light/dark
+        let streak;
+        if (st.curly) streak = 0.78 + 0.3 * hash(Math.round(x / (V * 2)), Math.round(y / (V * 2)), Math.round(z / (V * 2)), 5);
+        else {
+          // one shade per strand (strands run from the crown down), a little variation along it
+          streak = 0.8 + 0.22 * hash(strandOf(x, z), 1, 2, 3) + 0.05 * hash(strandOf(x, z), Math.round(y / (0.02 * s)), 5, 6);
+          // soft sheen ring where the light hits the curve of the head
+          const ny = n.y;
+          streak *= 1 + 0.16 * Math.exp(-(((ny - 0.62) / 0.14) ** 2));
+          // side parting (not on very short hair): a thin darker line from the hair line back
+          if (st.thick >= 0.009 && !st.curly && Math.abs(x - 0.028 * s) < V * 0.9 && y > C[1] + 0.55 * R[1] && z > C[2] - 0.3 * R[2]) streak *= 0.72;
+        }
+        // hair tie where the bun meets the head
+        if (onBun && z > bunC[2] + 0.012 * s) streak *= 0.55;
         list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: col.clone().multiplyScalar(streak), n });
       }
     }
