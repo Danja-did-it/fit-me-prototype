@@ -161,7 +161,9 @@ export async function startCamera(video, facing = 'user') {
   stopCamera(video);
   // the browser asks the user for permission
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+    // as sharp as the phone streams (iPhone: 1080 x 1920 upright): the face in a full-body photo is
+    // small, its details (projected onto the voxel face) need every pixel
+    video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 } },
     audio: false,
   });
   video.srcObject = stream;

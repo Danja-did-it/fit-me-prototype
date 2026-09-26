@@ -330,3 +330,6 @@
 - Test with a virtual person streamed as the camera (canvas.captureStream instead of getUserMedia): nobody in the
   picture -> no photo; person steps in -> "Bitte still stehen" -> "Gut so" -> 3-2-1 -> 4 photos -> "Foto aufgenommen";
   no suitable pose -> gives up with a spoken message.
+- v34: camera requests 1920 px (iPhone streams 1080 x 1920 upright, before 1280): the face in a full-body photo gets
+  ~135 px instead of ~90 px for the face projection. Face fit adapts to the device: if one head render + face points
+  takes > 0.35 s, 2 Gauss-Newton rounds instead of 3 (sample: 9.4 -> 6.3 %).

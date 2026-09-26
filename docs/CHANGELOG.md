@@ -39,5 +39,6 @@ Screenshots: `docs/screenshots/`.
 | v31 | 26.09.2026 | Echte Voxel-Schuhe (Sneaker-Form mit Sohle) statt bemalter Füße | v31-shoes.png |
 | v32 | 26.09.2026 | Demo-Tour (25 s): zeigt das Konzept ohne eigenen Scan – Scan, Körper verändern, Muskelgruppen, Bewegung | v32-demo-mobile.png |
 | v33 | 26.09.2026 | Kamera repariert (löst nur bei richtiger Pose + Stillstand aus, kein Mehrfach-Auslösen, Abbrechen) + Sprachansage mit Frauen-Roboterstimme + „Geführter Scan“ zum Scannen allein | – |
+| v34 | 26.09.2026 | Schärfere Kamerabilder (1920 px) für Gesicht und Kleidung; Gesichts-Fit passt sich der Gerätegeschwindigkeit an | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

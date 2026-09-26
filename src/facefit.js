@@ -144,8 +144,11 @@ export async function fitFace(avatar, photo, measures, { rounds = 3 } = {}) {
   // start: the simple estimate for the basic groups, average for the finer shapes
   const start = faceTargets(measures);
   const v0 = limit(PARAMS.map(([, targets]) => start[targets[0]] ?? 0));
+  const tm = performance.now();
   let model = await measureHead(avatar, toFace(v0));
   if (!model) return null;
+  // slow device (one head render + face points > 0.35 s): 2 Gauss-Newton rounds instead of 3
+  if (performance.now() - tm > 350) rounds = Math.min(rounds, 2);
   const e0 = residual(model, photo), error0 = rms(e0);
   // face surface points (head, in front of the ears) for the prior
   const p0 = R.lastPos, eye = avatar.shape().W.eyeL;
