@@ -109,6 +109,14 @@ export function meshVolume(pos, faces) {
   }
   return Math.abs(vol) / 6;
 }
+// Game style: hair must read against the skin. A hair tone close to the skin's lightness (washed-out photos)
+// is replaced by the nearest palette tone that is clearly darker; clearly lighter hair (blond) stays.
+export function contrastHair(hair, skin) {
+  const L = (h) => toLab(h)[0], ls = L(skin), lh = L(hair);
+  if (Math.abs(ls - lh) >= 22) return hair;
+  const darker = HAIR_TONES.filter((t) => L(t) <= ls - 22);
+  return darker.length ? snapColor(hair, darker) : hair;
+}
 // Body weight (kg) from volume (liters) and body fat %: two-component density (fat 0.9007, lean 1.100 kg/L)
 export const massOf = (volumeL, bf) => { const f = bf / 100; return volumeL / (f / 0.9007 + (1 - f) / 1.1); };
 
@@ -578,7 +586,11 @@ vCube = position / (0.5 * vCubeSize);`;
     const hl = this.body.look.hair, ec = eye.y - chinY;
     ctx.hairLine = (x) => {
       const t = Math.min(1, Math.abs(x) / (0.055 * s));
-      if (hl.line != null) return eye.y + (hl.line + ((hl.lineTemple ?? hl.line + 0.12) - hl.line) * t) * ec;
+      // (game style: a scanned hair line at most ~half an eye-to-chin length above the eyes - photos with
+      // low contrast put it too high, and on the big chibi head that becomes a huge bare forehead)
+      const line = hl.line != null && this.style === 'game' ? Math.min(hl.line, 0.5) : hl.line;
+      const temple = this.style === 'game' && hl.lineTemple != null ? Math.min(hl.lineTemple, line + 0.12) : hl.lineTemple;
+      if (line != null) return eye.y + (line + ((temple ?? line + 0.12) - line) * t) * ec;
       return eye.y + 0.058 * s + 0.012 * s * t;
     };
 
@@ -1185,7 +1197,8 @@ vCube = position / (0.5 * vCubeSize);`;
     // game style afro (like the concept): taller than wide, clumpy outline, a fringe down to the shades
     const game = this.style === 'game', gAfro = game && st.cover === 'afro';
     const ox = this.grid.head; // x offset of the head cube grid
-    const thick = st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.15 : 1);
+    // (game style: hair at least ~1.3 head cubes thick, so short hair is a closed cube layer, no bare patches)
+    const thick = Math.max(st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.15 : 1), game ? 1.3 * V : 0);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
     const R = [0.083 * s * (gAfro ? 1.0 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
@@ -1206,7 +1219,8 @@ vCube = position / (0.5 * vCubeSize);`;
     // wide as on the photo, the crown as high. Only for the scanned style (a chosen style keeps its shape).
     // trusted only when the hair mask looks complete (enough rows, hair well above the forehead)
     const rows = look.profile ? look.profile.w.filter((w) => w != null).length : 0;
-    const prof = look.profile && look.style === look.scanStyle && look.style !== 'none' && rows >= 12 && (look.topV ?? 0) >= 0.9 ? look.profile : null;
+    // (game style: the style's own clean shape - the scanned outline made thin, patchy hair on the big head)
+    const prof = !game && look.profile && look.style === look.scanStyle && look.style !== 'none' && rows >= 12 && (look.topV ?? 0) >= 0.9 ? look.profile : null;
     const ecM = E.y - chin;
     const outlineT = (y) => {
       if (!prof) return null;

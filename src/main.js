@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import './mplog.js'; // quiet MediaPipe status lines
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Avatar, HAIR_STYLES, HERO_LOOK, HERO_COLORS, HERO_COMP, SKIN_TONES, HAIR_TONES, snapColor, massOf } from './avatar.js';
+import { Avatar, HAIR_STYLES, HERO_LOOK, HERO_COLORS, HERO_COMP, SKIN_TONES, HAIR_TONES, snapColor, contrastHair, massOf } from './avatar.js';
 import { buildBodyMap } from './bodymap.js';
 import { bodyFromScans, verticalExtent } from './measure.js';
 import { fitToScan, faceTargets, FRONT_KEYS, SIDE_KEYS, FRONT_PROFILES, SIDE_PROFILES } from './fit.js';
@@ -855,7 +855,7 @@ function composeLook() {
     for (const k of ['shirt', 'shorts', 'shoe']) colors[k] = HERO_COLORS[k];
     if (scanned) {
       colors.skin = snapColor(colors.skin, SKIN_TONES);
-      colors.hair = colors.brow = colors.beard = snapColor(colors.hair, HAIR_TONES);
+      colors.hair = colors.brow = colors.beard = contrastHair(snapColor(colors.hair, HAIR_TONES), colors.skin);
     }
   } else if (scanned) look.acc = { glasses: false, chain: false, watch: false }; // realistic after a scan: true to life
   const m = manual.look;
