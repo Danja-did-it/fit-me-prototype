@@ -9,8 +9,8 @@
   <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: ws: wss:" />
   <title>Fit-me Prototype</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22%3E%3Crect width=%221%22 height=%221%22 fill=%22%234fc3f7%22/%3E%3C/svg%3E" />
-  <script type="module" crossorigin src="./assets/index-CU0GD9Ch.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CgvdkOOQ.css">
+  <script type="module" crossorigin src="./assets/index-Bbn6OJ0f.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CtOMgGk3.css">
 </head>
 <body>
   <!-- 3D view -->
@@ -22,7 +22,7 @@
 
   <!-- Control panel -->
   <aside id="panel">
-    <h1>Fit-me <span>Prototyp · v32 Vorschau</span></h1>
+    <h1>Fit-me <span>Prototyp · v33 Vorschau</span></h1>
 
     <section>
       <h2>1 · Körper scannen</h2>
@@ -33,6 +33,7 @@
           <li><b>Front:</b> gerade stehen, Füße hüftbreit, Arme 20–30° vom Körper weg, Blick in die Kamera.</li>
           <li><b>Seite:</b> 90° drehen, eine Schulter zur Kamera, Arme locker hängen lassen.</li>
           <li><b>Kamera:</b> Rückkamera, jemand anderes fotografiert. Handy auf Hüfthöhe, senkrecht, 2,5–3 m Abstand.</li>
+          <li><b>Allein:</b> „Geführter Scan“ tippen, Handy aufrecht auf Hüfthöhe hinstellen (z. B. an Bücher gelehnt), 2–3 m zurückgehen und der Stimme folgen. Ausgelöst wird erst, wenn du 1,5 s richtig und still stehst.</li>
           <li><b>Licht:</b> gleichmäßig von vorn, kein Gegenlicht, ruhiger Hintergrund.</li>
         </ul>
       </details>
@@ -48,6 +49,11 @@
         <button id="snapBack" disabled>Rücken aufnehmen</button>
         <button id="snapSide" disabled>Seite aufnehmen</button>
         <button id="flipCam" hidden>Kamera wechseln</button>
+      </div>
+      <div class="row">
+        <button id="guidedAll" class="primary">🎙 Geführter Scan (Front → Seite → Rücken)</button>
+        <button id="cancelCap" hidden>Abbrechen</button>
+        <label class="check"><input type="checkbox" id="voiceOn" checked> Sprachansage</label>
       </div>
       <div class="row">
         <label class="btn">Front-Fotos<input type="file" accept="image/*" id="fileFront" multiple hidden></label>
