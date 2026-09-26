@@ -574,7 +574,7 @@ const groupInputs = [...document.querySelectorAll('#groupSliders input')];
 const LEGENDS = {
   look: '<i style="background:#ffa040"></i>mehr Fett <i style="background:#e53935"></i>mehr Muskeln <i style="background:#4fa8e8"></i>weniger',
   groups: Object.values(GROUPS).map((g) => `<i style="background:${hex(g.color)}"></i>${g.label}`).join(' ') +
-    ' <i style="background:#f4d35e"></i>Fettdepot <i style="background:#d9d2c5"></i>Sehne/Knochen',
+    ' <i style="background:#f4d35e"></i>Fett <i style="background:#d9d2c5"></i>Sehne/Knochen',
   fibers: '<i style="background:#8e1b1b"></i>langsame Fasern (Typ I, Ausdauer) <i style="background:#f0b8b0"></i>schnelle Fasern (Typ II, Kraft) <i style="background:#f4d35e"></i>Fett',
 };
 
@@ -619,6 +619,12 @@ function updateComposition(dragging = false) {
   const fine = Number($('voxel').value);
   avatar.voxel = dragging ? Math.max(fine, 0.02) : fine;
   $('legend').innerHTML = LEGENDS[avatar.view];
+  // the same legend on the stage when colors carry a meaning (muscle groups, fibers, tint); it takes the
+  // place of the stat chips
+  const legendOn = avatar.view !== 'look' || avatar.composition.tint;
+  $('stageLegend').innerHTML = LEGENDS[avatar.view];
+  $('stageLegend').hidden = !legendOn;
+  document.body.classList.toggle('legend-on', legendOn);
   rebuild();
 }
 for (const el of [$('fat'), $('muscle'), ...groupInputs]) {
@@ -735,7 +741,7 @@ function applyStyle() {
 }
 $('style').addEventListener('change', applyStyle);
 setStage($('style').value);
-window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE, STAGES, setStage }; // for scripts (validate.mjs, checks)
+window.fitme = { runScan, applyScans, faceFit: () => faceFit, scene, camera, renderer, THREE, STAGES, setStage, avatarBox }; // for scripts (validate.mjs, checks)
 applyScans(); // first build (defaults until a photo is scanned)
 avatar.ready.then(() => applyScans()); // the body data (~9 MB) loads in the background
 
@@ -747,10 +753,47 @@ const setMode = (mode) => {
   animator.mode = mode;
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('active', b.dataset.mode === mode);
 };
+// Screen box of the avatar in the stage (viewport px): head top (+0.30 m for the hair), feet, shoulders
+// +-0.35 m. Used to keep captions and overlays off the avatar.
+function avatarBox(av = avatar) {
+  const rect = stage.getBoundingClientRect(), p = new THREE.Vector3();
+  const head = av.joints.head ? av.joints.head.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0, 1.6, 0);
+  const x0 = av.root.position.x, shY = av.mesh ? (av.mesh.W.shoulderL[1] + av.mesh.W.shoulderR[1]) / 2 : 1.2;
+  const box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+  for (const w of [[head.x, head.y + 0.3, head.z], [x0, 0, 0], [x0 - 0.35, shY, 0], [x0 + 0.35, shY, 0], [x0 - 0.15, 0, 0.12], [x0 + 0.15, 0, 0.12]]) {
+    p.set(...w).project(camera);
+    const sx = rect.left + ((p.x + 1) / 2) * rect.width, sy = rect.top + ((1 - p.y) / 2) * rect.height;
+    box.left = Math.min(box.left, sx); box.right = Math.max(box.right, sx); box.top = Math.min(box.top, sy); box.bottom = Math.max(box.bottom, sy);
+  }
+  return box;
+}
+// Demo: frame the avatar in the free space under the caption (pan the view up / down, pull back if needed)
+function frameAvatar() {
+  const cap = $('caption'), rect = stage.getBoundingClientRect();
+  const topFree = cap.hidden ? rect.top + 56 : cap.getBoundingClientRect().bottom + 8, bottomFree = rect.bottom - 8;
+  for (let i = 0; i < 40; i++) {
+    camera.updateMatrixWorld(); controls.update();
+    const b = avatarBox();
+    const room = bottomFree - topFree, h = b.bottom - b.top;
+    if (h > room) { // too big: pull back along the view direction
+      camera.position.sub(controls.target).multiplyScalar(1.06).add(controls.target);
+      continue;
+    }
+    const err = (b.top + b.bottom) / 2 - (topFree + bottomFree) / 2; // px, + = avatar too low
+    if (Math.abs(err) < 2 && b.top >= topFree && b.bottom <= bottomFree) break;
+    // world height per pixel at the target distance
+    const dist = camera.position.distanceTo(controls.target);
+    const wpp = (2 * dist * Math.tan((camera.fov * Math.PI) / 360)) / rect.height;
+    camera.position.y -= err * wpp; controls.target.y -= err * wpp;
+  }
+}
+window.avatarBox = avatarBox;
+
 function stopDemo() {
   if (!demo) return;
   demo = null;
   $('caption').hidden = true;
+  camera.position.set(...CAM_HOME.pos); controls.target.set(...CAM_HOME.target);
   $('demoBtn').innerHTML = '<span class="long">▶ Demo: So funktioniert Fit-me</span><span class="short">▶ Demo</span>';
   $('demoBtn').classList.remove('running');
   avatar.root.rotation.y = 0;
@@ -764,7 +807,7 @@ async function runDemo() {
   demo = token;
   const alive = () => demo === token;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const say = (t) => { $('caption').textContent = t; $('caption').hidden = false; };
+  const say = (t) => { $('caption').textContent = t; $('caption').hidden = false; frameAvatar(); };
   const kfa = () => (avatar.fat ? ` (Körperfett ≈ ${avatar.fat.percent.toFixed(0)} %)` : '');
   // slide fat / muscle smoothly (coarse cubes while moving, full detail at the end)
   const tween = async (fat, muscle, ms) => {

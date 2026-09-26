@@ -105,11 +105,13 @@ details[open] summary { margin-bottom: 8px; }
   body { flex-direction: column; }
   /* the Avatar tab gets a big stage, the other tabs a smaller one (their content scrolls under it) */
   #stage { height: 44vh; height: 44dvh; position: sticky; top: 0; z-index: 1; flex: none; }
-  body[data-tab="avatar"] #stage { height: calc(100vh - var(--tab-h) - 128px); height: calc(100dvh - var(--tab-h) - 128px); }
+  body[data-tab="avatar"] #stage { height: calc(100vh - var(--tab-h) - 136px); height: calc(100dvh - var(--tab-h) - 136px); }
+  body[data-tab="avatar"] #panel { padding-top: 10px; }
+  body[data-tab="avatar"] .cta { margin-top: 2px; }
   #panel { width: 100%; height: auto; border-left: 0; border-top: 1px solid var(--line);
     padding-bottom: calc(var(--tab-h) + 16px); }
   #panel h1, #tabstrip, #legend, [data-tab-panel="avatar"] h2 { display: none; } /* (the tab bar names the tab) */
-  [data-tab-panel="avatar"] h3 { margin-top: 4px; }
+  [data-tab-panel="avatar"] h3 { margin: 0 0 6px; }
   button, .btn { padding: 10px 12px; } /* bigger touch targets */
   #tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: var(--tab-h);
     padding-bottom: env(safe-area-inset-bottom); background: rgba(16,19,26,.94); border-top: 1px solid rgba(255,255,255,.06);
@@ -133,9 +135,17 @@ details[open] summary { margin-bottom: 8px; }
   border: 0; border-radius: 999px; padding: 9px 14px; font-weight: 600; cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
 .demo-btn.running { background: #2c313a; color: var(--text); }
-.caption { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2;
-  width: min(92%, 560px); padding: 10px 14px; border-radius: 12px; text-align: center;
-  background: rgba(20, 22, 26, 0.82); backdrop-filter: blur(6px); font-size: 15px; line-height: 1.4; }
+.caption { position: absolute; left: 50%; top: 56px; bottom: auto; transform: translateX(-50%); z-index: 2;
+  width: calc(100% - 24px); max-width: 560px; padding: 10px 14px; border-radius: 12px; text-align: center;
+  background: rgba(20, 22, 26, 0.82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); font-size: 15px; line-height: 1.4;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.caption[hidden] { display: none; }
+@media (max-width: 760px) { .caption { font-size: 13.5px; } }
+#stageLegend { position: absolute; left: 12px; right: 12px; bottom: 16px; z-index: 2; padding: 7px 8px; font-size: 10px;
+  line-height: 1.5; color: var(--text); pointer-events: none; max-height: calc(4 * 1.5em + 14px); overflow: hidden; } /* (13 muscle groups need 4 lines on phones) */
+#stageLegend[hidden] { display: none; }
+#stageLegend i { width: 8px; height: 8px; margin: 0 3px 0 5px; }
+#stageLegend i:first-child { margin-left: 0; }
 
 /* main action: hands-free guided scan */
 button.primary { background: var(--accent); color: #0b1a22; font-weight: 600; border-color: transparent; }
