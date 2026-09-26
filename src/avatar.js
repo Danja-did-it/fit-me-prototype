@@ -275,24 +275,29 @@ vCubeSize = 2.0 * max(abs(position.x), max(abs(position.y), abs(position.z)));
 vCube = position / (0.5 * vCubeSize);`;
     // Voxel-game look: every cube face gets slightly darker toward its edges, so single cubes read
     // like in MagicaVoxel / Teardown renders - strong on the 0.75 cm body cubes, faint on fine detail.
+    // Game style (uniforms, set in build()): flatter cube faces (less of the smooth mesh normal), a crisper
+    // edge line, and lighter top / darker bottom faces, so every cube reads like in a voxel game.
+    this.shading = { uNormalMix: { value: 0.85 }, uBevel: { value: 0.11 }, uFaceTone: { value: 0 } };
     const bevel = `#include <color_fragment>
 {
   vec3 a = abs(vCube);
   float hi = max(a.x, max(a.y, a.z)), lo = min(a.x, min(a.y, a.z));
   float mid = a.x + a.y + a.z - hi - lo; // distance to the nearest edge on this face
-  diffuseColor.rgb *= 1.0 - 0.11 * smoothstep(0.003, 0.007, vCubeSize) * smoothstep(0.7, 1.0, mid);
+  diffuseColor.rgb *= 1.0 - uBevel * smoothstep(0.003, 0.007, vCubeSize) * smoothstep(0.7, 1.0, mid);
+  if (uFaceTone > 0.0 && a.y > 0.999 && a.y >= max(a.x, a.z)) diffuseColor.rgb *= vCube.y > 0.0 ? 1.0 + 0.14 * uFaceTone : 1.0 - 0.18 * uFaceTone;
 }`;
     const inject = (shader, normals) => {
       shader.uniforms.boneM = this.boneUniform;
+      if (normals) Object.assign(shader.uniforms, this.shading);
       let v = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\n' + skinChunk)
         .replace('#include <project_vertex>', project)
         // shadows are looked up at the moved position too
         .replace('#include <worldpos_vertex>', `vec4 worldPosition = modelMatrix * vec4(skinCube(transformed), 1.0);`);
       // smooth light: blend each cube face normal with the real mesh normal
-      if (normals) v = v.replace('#include <beginnormal_vertex>',
-        'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, 0.85));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
+      if (normals) v = v.replace('#include <common>', '#include <common>\nuniform float uNormalMix;').replace('#include <beginnormal_vertex>',
+        'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, uNormalMix));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
       shader.vertexShader = v;
-      if (normals) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;')
+      if (normals) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\nuniform float uBevel;\nuniform float uFaceTone;')
         .replace('#include <color_fragment>', bevel);
     };
     this.material.onBeforeCompile = (shader) => inject(shader, true);
@@ -479,9 +484,18 @@ vCube = position / (0.5 * vCubeSize);`;
     const triJoint = new Array(nT), triDetail = new Uint8Array(nT);
     for (let t = 0; t < nT; t++) { triJoint[t] = this.vertJoint[F[t * 3]]; triDetail[t] = this.vertDetail[F[t * 3]]; }
     const Vd = V >= 0.0075 ? V / 2 : V;
+    const game = this.style === 'game';
+    const Vh = V >= 0.0075 ? (game ? V / 2 : V / 3) : V; // head + neck cube size (game style: chunkier face cubes)
+    // game style: body and head grids have a cube column centered on x = 0, so the face (mouth, glasses
+    // bridge) and the six-pack are symmetric with one center column. The half-size arm grids stay on the
+    // body grid lines (V/2 = one arm cube). Each pass: [cube size, cubes, x offset of its grid]
+    const grid = (this.grid = { body: game ? V / 2 : 0, head: game ? Vh / 2 : 0 });
+    Object.assign(this.shading.uNormalMix, { value: game ? 0.35 : 0.85 }); // see the shader in the constructor
+    Object.assign(this.shading.uBevel, { value: game ? 0.2 : 0.11 });
+    Object.assign(this.shading.uFaceTone, { value: game ? 1 : 0 });
     const passes = [];
     if (Vd < V) {
-      passes.push([V, voxelize(pos, F, V, null, (t) => !triDetail[t])]);
+      passes.push([V, voxelize(pos, F, V, null, (t) => !triDetail[t], grid.body), grid.body]);
       const boxOf = (test) => {
         const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
         for (let v = 0; v < H.N; v++) if (test(v)) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], pos[v * 3 + k]); mx[k] = Math.max(mx[k], pos[v * 3 + k]); }
@@ -490,13 +504,12 @@ vCube = position / (0.5 * vCubeSize);`;
       const isHead = (v) => this.vertDetail[v] && (this.vertJoint[v] === 'head' || this.vertJoint[v] === 'neck');
       // head + neck with the finest cubes (1/3 of the body size: 0.33 cm at 1 cm) for the face,
       // hands with half-size cubes
-      const Vh = this.style === 'game' ? V / 2 : V / 3; // game style: chunkier face cubes
-      passes.push([Vh, voxelize(pos, F, Vh, boxOf(isHead), (t) => triDetail[t] && isHead(F[t * 3]))]);
+      passes.push([Vh, voxelize(pos, F, Vh, boxOf(isHead), (t) => triDetail[t] && isHead(F[t * 3]), grid.head), grid.head]);
       // forearms + hands with half-size cubes (fine enough for fingers and forearm veins)
       for (const test of ['elbowL', 'elbowR', 'shoulderL', 'shoulderR'].map((j) => (v) => this.vertDetail[v] && this.vertJoint[v] === j)) {
-        passes.push([Vd, voxelize(pos, F, Vd, boxOf(test), (t) => triDetail[t] && test(F[t * 3]))]);
+        passes.push([Vd, voxelize(pos, F, Vd, boxOf(test), (t) => triDetail[t] && test(F[t * 3])), 0]);
       }
-    } else passes.push([V, voxelize(pos, F, V)]);
+    } else passes.push([V, voxelize(pos, F, V, null, null, grid.body), grid.body]);
 
     // face frame for painting (eyes, brows, lips, beard, hair line)
     const eye = { x: (W.eyeL[0] - W.eyeR[0]) / 2, y: (W.eyeL[1] + W.eyeR[1]) / 2, z: (W.eyeL[2] + W.eyeR[2]) / 2 };
@@ -544,7 +557,7 @@ vCube = position / (0.5 * vCubeSize);`;
     const stats = { total: 0, slow: 0, fast: 0, fat: 0, other: 0 };
     const col = new THREE.Color(), nrm = new THREE.Vector3();
     const extra = []; // hair / beard volume layers
-    for (const [size, cubes] of passes) {
+    for (const [size, cubes, offX] of passes) {
       for (const cb of cubes) {
         const a = F[cb.tri * 3], b = F[cb.tri * 3 + 1], c = F[cb.tri * 3 + 2];
         const w0 = 1 - cb.u - cb.v;
@@ -558,10 +571,10 @@ vCube = position / (0.5 * vCubeSize);`;
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
         const gd = this.grooveDist, groove = gd[a] * w0 + gd[b] * cb.u + gd[c] * cb.v; // distance to a muscle border
-        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, ctx });
+        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, offX, ctx });
         const jw = worldOf[jn];
         (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nrm.clone(), v: vMain });
-        if (res) extra.push({ jn, size, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
+        if (res) extra.push({ jn, size, offX, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
       }
     }
     // hair / beard volume: extra cube layers along the surface normal
@@ -569,7 +582,10 @@ vCube = position / (0.5 * vCubeSize);`;
     for (const [key, list] of Object.entries(byJoint)) for (const r of list) taken.add(key + r.p.map((v) => Math.round(v * 1000)).join());
     for (const e of extra) {
       for (let k = 1; k <= e.layers; k++) {
-        const q = [e.x + e.n.x * e.size * k, e.y + e.n.y * e.size * k, e.z + e.n.z * e.size * k].map((v) => (Math.floor(v / e.size) + 0.5) * e.size);
+        const q = [e.x + e.n.x * e.size * k, e.y + e.n.y * e.size * k, e.z + e.n.z * e.size * k].map((v, i) => {
+          const o = i ? 0 : e.offX; // same grid as the cube it grows from
+          return (Math.floor((v - o) / e.size) + 0.5) * e.size + o;
+        });
         const p2 = [q[0] - e.jw[0], q[1] - e.jw[1], q[2] - e.jw[2]];
         const key = e.jn + '|' + e.size;
         const id = key + p2.map((v) => Math.round(v * 1000)).join();
@@ -580,7 +596,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
-    if (this.body.look.acc?.glasses) this.addGlasses(byJoint, worldOf, ctx, V >= 0.0075 ? (this.style === 'game' ? V / 2 : V / 3) : V); // head cube size
+    if (this.body.look.acc?.glasses) this.addGlasses(byJoint, worldOf, ctx, Vh); // head cube size
     if (this.style === 'game') this.stylize(byJoint, worldOf, ctx);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
@@ -636,6 +652,9 @@ vCube = position / (0.5 * vCubeSize);`;
   // ---- colors: returns { layers, color } when extra hair/beard volume is wanted ----
   colorCube(out, q) {
     const { jn, x, y, z, n, isEye, hand, ear, groove, label, bary, tissue, occ, ctx } = q;
+    const game = this.style === 'game';
+    // game style: small details are counted in whole cubes (cube column / row of this cube, grid of its pass)
+    const cellX = (v) => Math.floor((v - (q.offX || 0)) / q.size), cellY = (v) => Math.floor(v / q.size);
     const c = this.body.colors, look = this.body.look, o = look.outfit;
     const { face, W, L, s } = ctx;
     const E = face.eye;
@@ -775,12 +794,12 @@ vCube = position / (0.5 * vCubeSize);`;
         if (o.shoes) { color = c.shoe; if (y < 0.018 * s) special = DETAIL.sole; }
         else if (o.bottoms === 'long' && y > W.ankleL[1] - 0.01) color = c.shorts;
       }
-      // bare upper body: nipples and navel
-      if (!shirt && jn === 'chest' && front) {
+      // bare upper body: nipples and navel (not in the game style: smaller than one cube, like in the concept)
+      if (!shirt && !game && jn === 'chest' && front) {
         const d = Math.hypot(ax - W.shoulderL[0] * 0.55, y - (W.shoulderL[1] - 0.17 * s));
         if (d < 0.011 * s) special = new THREE.Color(c.skin).multiplyScalar(d < 0.005 * s ? 0.62 : 0.8);
       }
-      if (!shirt && (jn === 'spine' || jn === 'chest') && n.z > 0.5 && Math.hypot(x, y - (W.hipL[1] + 0.125 * s)) < 0.006 * s) {
+      if (!shirt && !game && (jn === 'spine' || jn === 'chest') && n.z > 0.5 && Math.hypot(x, y - (W.hipL[1] + 0.125 * s)) < 0.006 * s) {
         special = new THREE.Color(c.skin).multiplyScalar(0.6);
       }
     }
@@ -796,26 +815,30 @@ vCube = position / (0.5 * vCubeSize);`;
         if (special === DETAIL.sole || special === DETAIL.sock) special = null;
       }
     }
-    // game style: belt with a silver buckle and a white cross logo on the right thigh (street wear)
-    if (this.style === 'game' && o.bottoms === 'long' && color === c.shorts) {
-      if (y > ctx.waistY - 0.03 * s && y <= ctx.waistY + 0.005 * s) color = ax < 0.022 * s && n.z > 0.6 ? 0xcfd3d8 : 0x0c0c0e;
-      const lx = x - W.hipR[0], ly = y - (W.hipR[1] - 0.13 * s);
-      if (n.z > 0.3 && jn === 'hipR' && ((Math.abs(lx) < 0.008 * s && Math.abs(ly) < 0.042 * s) || (Math.abs(ly - 0.016 * s) < 0.008 * s && Math.abs(lx) < 0.026 * s))) color = 0xeeeeee;
+    // game style: black belt (no buckle, like the concept) and a white cross logo on the right thigh, in whole
+    // cubes: 3 wide x 5 high, the cross bar in the 2nd row from the top
+    const LOGO = 0xd6d6d6;
+    if (game && o.bottoms === 'long' && color === c.shorts) {
+      if (y > ctx.waistY - 0.03 * s && y <= ctx.waistY + 0.005 * s) color = 0x0c0c0e;
+      const i = cellX(x) - cellX(W.hipR[0]), j = cellY(y) - cellY(W.hipR[1] - 0.13 * s);
+      if (n.z > 0.3 && jn === 'hipR' && ((i === 0 && Math.abs(j) <= 2) || (j === 1 && Math.abs(i) <= 1))) color = LOGO;
     }
     // game style: long pants are baggy (street style) - extra cube layers, wider below the knee
-    if (this.style === 'game' && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn) && !result) {
+    if (game && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn) && !result) {
       result = { layers: /^knee/.test(jn) ? 2 : 1, color };
-    } else if (this.style === 'game' && o.bottoms === 'long' && jn === 'hipR' && color === 0xeeeeee) {
+    } else if (game && o.bottoms === 'long' && jn === 'hipR' && color === LOGO) {
       result = { layers: 1, color }; // the logo sits on the baggy outer layer
     }
     // accessories: chain around the neck (with a small pendant), watch on the left wrist
     const acc = look.acc || {};
     if (acc.chain && (jn === 'neck' || jn === 'chest')) {
       const a = Math.atan2(x - W.neck[0], z - W.neck[2]), front = Math.max(0, Math.cos(a));
-      const yc = W.neck[1] - 0.035 * s - 0.075 * s * front ** 1.5;
+      // game style: a longer U down onto the upper chest, the band at least ~1 cube high (no gaps)
+      const yc = game ? W.neck[1] - 0.045 * s - 0.1 * s * front ** 1.6 : W.neck[1] - 0.035 * s - 0.075 * s * front ** 1.5;
       const pend = front > 0.985 && y < yc && y > yc - 0.022 * s;
-      if ((Math.abs(y - yc) < 0.0045 * s && Math.hypot(x - W.neck[0], z - W.neck[2]) < 0.14 * s) || pend) {
-        color = hash(Math.round(x / 0.006), Math.round(y / 0.006), Math.round(z / 0.006), 21) > 0.5 ? 0xe4e7ec : 0xb9bec6;
+      if ((Math.abs(y - yc) < (game ? Math.max(0.0045 * s, 0.55 * q.size) : 0.0045 * s) && Math.hypot(x - W.neck[0], z - W.neck[2]) < (game ? 0.14 + 0.08 * front : 0.14) * s) || pend) {
+        color = game ? ((cellX(x) + cellY(y) + Math.floor(z / q.size)) & 1 ? 0xeef1f5 : 0x7d838c) // links: bright / dark
+          : hash(Math.round(x / 0.006), Math.round(y / 0.006), Math.round(z / 0.006), 21) > 0.5 ? 0xe4e7ec : 0xb9bec6;
         special = null;
         result = { layers: 1, color };
       }
@@ -840,6 +863,13 @@ vCube = position / (0.5 * vCubeSize);`;
     // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
     if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size);
     if (special) out.copy(special); else out.set(color);
+    // game style: a little variation per cube (skin: value and a touch of hue, pants a bit more), so the
+    // surfaces read as single cubes like in the concept
+    if (game && !special && (color === c.skin || color === c.shorts)) {
+      const h1 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 31), h2 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 32);
+      if (color === c.skin) out.offsetHSL((h2 - 0.5) * 0.012, 0, 0).multiplyScalar(0.97 + 0.06 * h1);
+      else out.multiplyScalar(0.92 + 0.16 * h1);
+    }
     // tint: where fat / muscle was added or removed
     if (this.composition.tint) {
       if (tissue.kind === 'fat' && Math.abs(this.fatGain) > 0.01) out.lerp(this.fatGain > 0 ? TINT.fat : TINT.less, Math.min(0.3, Math.abs(this.fatGain) * 0.3));
@@ -868,9 +898,10 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     if (!Number.isFinite(zf)) return;
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;
+    const ox = this.grid.head, snapX = (v) => (Math.floor((v - ox) / V) + 0.5) * V + ox; // on the head grid
     const halfW = E.x + 0.037 * s, y0 = E.y - 0.016 * s, y1 = E.y + 0.019 * s; // big shades: brow to cheek, a bit wider than the face
     const n = new THREE.Vector3(0, 0, 1), dark = new THREE.Color(0x0c0d10), top = new THREE.Color(0x2c323c), frame = new THREE.Color(0x050506);
-    for (let x = snap(-halfW); x <= halfW; x += V) for (let y = snap(y0); y <= y1; y += V) {
+    for (let x = snapX(-halfW); x <= halfW; x += V) for (let y = snap(y0); y <= y1; y += V) {
       if (Math.abs(x) < 0.01 * s && y < E.y + 0.002 * s) continue; // notch over the nose
       for (let k = 1; k <= 2; k++) {
         const c = (k === 2 && y > y1 - V * 1.5 ? top : k === 1 ? frame : dark).clone();
@@ -879,7 +910,7 @@ vCube = position / (0.5 * vCubeSize);`;
     }
     // arms: from the outer edge straight back toward the ears
     for (const sx of [-1, 1]) for (let z = snap(zf); z > zf - 0.08 * s; z -= V) {
-      list.push({ p: [sx * snap(halfW) - hw[0], snap(E.y + 0.01 * s) - hw[1], z - hw[2]], c: frame.clone(), n: new THREE.Vector3(sx, 0, 0) });
+      list.push({ p: [sx * snapX(halfW) - hw[0], snap(E.y + 0.01 * s) - hw[1], z - hw[2]], c: frame.clone(), n: new THREE.Vector3(sx, 0, 0) });
     }
   }
 
@@ -965,11 +996,20 @@ vCube = position / (0.5 * vCubeSize);`;
           const x = (ix + 0.5) * V, y = (iy + 0.5) * V, z = (iz + 0.5) * V;
           const up = !inShoe(ix, iy + 1, iz);
           const n = new THREE.Vector3(ix - cx, up ? 3 : 0.3, (iz - cz) * 0.6).normalize();
-          let c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
-          // sneaker details: grey side stripe, laces on top toward the toes
           const side = Math.abs(ix - cx) > 1.2 && !up, fwd = iz - cz;
-          if (side && y > 0.02 * s && y < 0.036 * s && fwd > -2 && fwd < 3) c = new THREE.Color(0xb9bdc4);
-          if (up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4 && y > 0.03 * s) c = new THREE.Color(0xd8dade).multiplyScalar(iz % 2 ? 1 : 0.9);
+          let c;
+          if (this.style === 'game') {
+            // chunky voxel sneaker in whole cube rows: grey sole row, upper with a side stripe in the
+            // row above, laces on the top toward the toes (the metric bands below fall between the rows)
+            c = iy === 0 ? new THREE.Color(0xb0b0b0) : shoe.clone().multiplyScalar(0.97 + 0.03 * hash(ix, iy, iz, 13));
+            if (iy === 1 && side && fwd > -2 && fwd < 3) c = new THREE.Color(0xa6abb2);
+            if (iy > 0 && up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4) c = new THREE.Color(0x9aa0a8).multiplyScalar(iz % 2 ? 1 : 0.9);
+          } else {
+            c = y < 0.014 * s ? sole.clone() : shoe.clone().multiplyScalar(0.94 + 0.06 * hash(ix, iy, iz, 13));
+            // sneaker details: grey side stripe, laces on top toward the toes
+            if (side && y > 0.02 * s && y < 0.036 * s && fwd > -2 && fwd < 3) c = new THREE.Color(0xb9bdc4);
+            if (up && Math.abs(ix - cx) < 1.1 && fwd > 0 && fwd < 4 && y > 0.03 * s) c = new THREE.Color(0xd8dade).multiplyScalar(iz % 2 ? 1 : 0.9);
+          }
           list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c, n });
         }
       }
@@ -1083,8 +1123,9 @@ vCube = position / (0.5 * vCubeSize);`;
     const x0 = -R[0] - reach, x1 = -x0, z0 = Math.min(C[2] - R[2] - reach, st.tail ? tailB[2] - 0.03 * s : Infinity), z1 = C[2] + R[2] + reach;
     const yLo = Math.min(bottom - 0.045 * s, st.tail ? tailB[1] - 0.02 * s : Infinity);
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;
+    const ox = this.grid.head, snapX = (v) => (Math.floor((v - ox) / V) + 0.5) * V + ox; // on the head grid
     for (let y = snap(yLo); y < C[1] + R[1] + reach; y += V) {
-      for (let x = snap(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
+      for (let x = snapX(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
         if (!inHair(x, y, z)) continue;
         // only the outer shell of the hair volume
         if (inHair(x + V, y, z) && inHair(x - V, y, z) && inHair(x, y + V, z) && inHair(x, y - V, z) && inHair(x, y, z + V) && inHair(x, y, z - V)) continue;

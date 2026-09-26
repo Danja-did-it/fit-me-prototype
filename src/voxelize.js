@@ -26,8 +26,9 @@ export function vertexNormals(pos, faces, N) {
 
 // pos: Float32Array (meters), faces: triangle index list, V: cube size,
 // box: optional { min:[x,y,z], max:[x,y,z] } to voxelize only a region,
-// emit(tri): which triangles may produce visible cubes (others only close the surface)
-export function voxelize(pos, faces, V, box = null, emit = null) {
+// emit(tri): which triangles may produce visible cubes (others only close the surface),
+// offX: shifts the grid in x (0..V). V/2 puts a cube column centered on x = 0 (symmetric voxel faces).
+export function voxelize(pos, faces, V, box = null, emit = null, offX = 0) {
   // bounds
   let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < pos.length; i += 3) for (let k = 0; k < 3; k++) {
@@ -35,7 +36,7 @@ export function voxelize(pos, faces, V, box = null, emit = null) {
   }
   if (box) { min = min.map((v, k) => Math.max(v, box.min[k])); max = max.map((v, k) => Math.min(v, box.max[k])); }
   // grid aligned to multiples of V (so detail and body grids line up), 2-cell margin
-  const o = min.map((v) => Math.floor(v / V) * V - 2 * V);
+  const o = min.map((v, k) => Math.floor(v / V) * V - 2 * V + (k === 0 ? offX : 0));
   const dim = max.map((v, k) => Math.ceil((v - o[k]) / V) + 3);
   const [nx, ny, nz] = dim;
   const grid = new Uint8Array(nx * ny * nz); // 0 empty, 1 surface, 2 outside

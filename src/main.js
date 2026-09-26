@@ -627,10 +627,10 @@ function updateLook(e) {
   applyScans();
 }
 for (const id of ['hairStyle', 'beard', 'bangs', 'mustache', 'accGlasses', 'accChain', 'accWatch', 'top', 'bottoms', 'shoes', ...Object.keys(COLOR_INPUTS)]) $(id).addEventListener('change', updateLook);
-// Style: Voxel-Double (game look, chunky 1.5 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
+// Style: Voxel-Double (game look, chunky 2.8 cm cubes, bigger head) or realistic (fine 0.75 cm cubes)
 function applyStyle() {
   avatar.style = $('style').value;
-  $('voxel').value = avatar.style === 'game' ? '0.02' : '0.0075';
+  $('voxel').value = avatar.style === 'game' ? '0.028' : '0.0075';
   composeLook(); // outfit / accessories / palette depend on the style
   showLook(avatar.body);
   updateComposition();
