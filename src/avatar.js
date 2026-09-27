@@ -620,6 +620,7 @@ if (uRim > 0.0) {
           normals[a * 3 + 2] * w0 + normals[b * 3 + 2] * cb.u + normals[c * 3 + 2] * cb.v).normalize();
         const vMain = w0 >= cb.u && w0 >= cb.v ? a : cb.u >= cb.v ? b : c; // closest mesh point
         const jn = triJoint[cb.tri];
+        if (game && this.body.look.outfit?.shoes && (jn === 'ankleL' || jn === 'ankleR')) continue; // game: the sneaker box replaces the foot
         const isEye = H.faceGroup[cb.tri] > 0;
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
@@ -904,22 +905,38 @@ if (uRim > 0.0) {
     }
     // game style: black belt (no buckle, like the concept) and a white cross logo on the right thigh, in whole
     // cubes: 3 wide x 5 high, the cross bar in the 2nd row from the top
-    const LOGO = 0xd6d6d6;
-    if (game && o.bottoms === 'long' && color === c.shorts) {
-      if (y > ctx.waistY - 0.03 * s && y <= ctx.waistY + 0.005 * s) color = 0x0c0c0e;
-      const i = cellX(x) - cellX(W.hipR[0]), j = cellY(y) - cellY(W.hipR[1] - 0.13 * s);
-      if (n.z > 0.3 && jn === 'hipR' && ((i === 0 && Math.abs(j) <= 2) || (j === 1 && Math.abs(i) <= 1))) color = LOGO;
-    }
-    // game style: long pants are baggy (street style) - an extra cube layer, a darker cuff row at the hem
-    // (no extra layer there, so the sneakers stay visible) and warm fold highlights on the lit side
+    // game style long pants (street wear, in whole cubes): a 2-row waistband with two white drawstring ends,
+    // a 3x4 cross logo halfway down the right leg (grey crossing cube), one baggy cube layer everywhere (two
+    // at the sides of the knee), fold ridges in short segments, a darker cuff row at the hem and no extra
+    // layer near the hem, so the sneakers stay visible
+    const LOGO = 0xe0e0e0, LOGO_MID = 0x8a8a8a, STRING = 0xd6d6d6, BAND = 0x2c2826;
     const hemY = W.ankleL[1] + 0.02 * s; // = end of long pants
-    const pants = game && o.bottoms === 'long' && color === c.shorts && /^(hip|knee)[LR]$/.test(jn);
-    if (pants) {
+    const longPants = game && o.bottoms === 'long' && color === c.shorts;
+    let pantsCube = false;
+    if (longPants) {
+      const band = cellY(ctx.waistY); // top row of the pants
+      const row = cellY(y), col = cellX(x) - cellX(0);
+      if (row >= band - 1) color = BAND;
+      else if (row >= band - 3 && Math.abs(col) === 1 && n.z > 0.5 && /^(hips|spine|hip[LR])$/.test(jn)) { color = STRING; result = { layers: 1, color }; }
+      const lx = cellX(x) - cellX(W.hipR[0]), ly = row - cellY(0.45 * ctx.waistY);
+      if (color === c.shorts && n.z > 0.3 && /^(hip|knee)R$/.test(jn) && ((lx === 0 && ly >= -2 && ly <= 1) || (ly === 0 && Math.abs(lx) <= 1))) {
+        color = lx === 0 && ly === 0 ? LOGO_MID : LOGO;
+        result = { layers: 1, color }; // the logo sits on the baggy outer layer
+      }
+      pantsCube = color === c.shorts && /^(hip|knee)[LR]$/.test(jn);
+    }
+    if (pantsCube) {
+      const knee = /^knee/.test(jn), row = cellY(y);
       if (y < hemY + q.size) color = 0x2a2220; // cuff
-      else if (cellY(y) % 4 === 0 && (n.x < -0.2 || n.z > 0.6)) color = new THREE.Color(c.shorts).lerp(new THREE.Color(0x3a2c24), 0.5).getHex();
-      if (y >= hemY + 1.5 * q.size && !result) result = { layers: 1, color };
-    } else if (game && o.bottoms === 'long' && jn === 'hipR' && color === LOGO) {
-      result = { layers: 1, color }; // the logo sits on the baggy outer layer
+      else {
+        // fold ridges: every 3rd row on the lower leg (every 4th on the thigh), in 2-4 cube segments
+        const every = knee ? 3 : 4, seg = hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 3), row, jn.length, 17);
+        const ridge = (r) => r % every === 0 && hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 3), r, jn.length, 17) > (knee ? 0.45 : 0.6);
+        if (ridge(row) && seg > 0) color = n.x < -0.2 || n.z > 0.5 ? 0x54423a : 0x3a2c24;
+        else if (ridge(row + 1)) color = new THREE.Color(c.shorts).multiplyScalar(0.8).getHex(); // under a ridge
+      }
+      const kneeY = W.kneeL[1];
+      if (y >= hemY + 1.5 * q.size && !result) result = { layers: Math.abs(y - kneeY) < 0.08 * s && Math.abs(n.x) > 0.5 ? 2 : 1, color };
     }
     // accessories: chain around the neck (with a small pendant), watch on the left wrist
     const acc = look.acc || {};
@@ -973,7 +990,7 @@ if (uRim > 0.0) {
     if (game && !special && ((color === c.skin && !head) || color === c.shorts)) { // (fold bands / cuff stay even)
       const h1 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 31), h2 = hash(cellX(x), cellY(y), Math.floor(z / q.size), 32);
       if (color === c.skin) out.offsetHSL((h2 - 0.5) * 0.012, 0, 0).multiplyScalar(0.97 + 0.06 * h1);
-      else out.multiplyScalar(0.92 + 0.16 * h1);
+      else out.multiplyScalar(0.97 + 0.06 * h1);
     }
     // tint: where fat / muscle was added or removed
     if (this.composition.tint) {
@@ -1118,7 +1135,7 @@ if (uRim > 0.0) {
   // factor), so all measuring, fitting and painting keeps the real body.
   stylize(byJoint, worldOf, ctx) {
     // (head x1.95: its cubes end up within 10 % of the body cubes; slim neck like the concept)
-    const HEAD = 1.95, NECK = 0.95, FEET = 1.4, UPPER = 1.4, FORE = 1.25, DELT = 1.15;
+    const HEAD = 1.95, NECK = 0.95, FEET = 1.0, UPPER = 1.4, FORE = 1.25, DELT = 1.15;
     const out = {};
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
@@ -1148,6 +1165,7 @@ if (uRim > 0.0) {
   // footprint, widened a little, filled up to the top of the foot + margin (at most a collar just
   // above the ankle), light sole at the bottom. The cubes follow the ankle joint.
   addShoes(byJoint, worldOf, ctx, V, pos) {
+    if (this.style === 'game') return this.addSneakerBoxes(byJoint, worldOf, ctx, V);
     const { W, s } = ctx;
     const shoe = new THREE.Color(this.body.colors.shoe ?? 0x333333), sole = new THREE.Color(0xe6e4df);
     for (const side of ['L', 'R']) {
@@ -1200,6 +1218,40 @@ if (uRim > 0.0) {
           }
           list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c, n });
         }
+      }
+    }
+  }
+
+  // Voxel-Double sneakers (game style): a chunky box per foot in body cubes, straight forward (the splayed
+  // MakeHuman foot gave a slipper look): 6 wide, 11 long (3 behind the ankle, 8 in front), 2 sole rows (light
+  // sole + a grey sole line), the upper 5 rows high at the heel tapering to 3 over the toes, bevelled top
+  // edges, laces, a dark collar opening and a diagonal side stripe.
+  addSneakerBoxes(byJoint, worldOf, ctx, V) {
+    const { W } = ctx, ox = this.grid.body;
+    const HEIGHT = [7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 5], L = HEIGHT.length; // rows per length step, heel -> toe (incl. 2 sole rows)
+    const I0 = -3, I1 = 2; // columns across the foot (6 wide, the extra column on the outer side)
+    const C = { upper: 0xe6e8eb, sole: 0xd6d6d6, line: 0x8a8a8a, laceA: 0xc9ced6, laceB: 0x9aa3ae, collar: 0x5d636b, stripe: 0xaab2bd };
+    for (const side of ['L', 'R']) {
+      const jn = 'ankle' + side, a = W[jn], jw = worldOf[jn], list = (byJoint[jn + '|' + V] ||= []);
+      const c0 = Math.floor((a[0] - ox) / V), k0 = Math.floor(a[2] / V), sgn = side === 'L' ? 1 : -1; // L = +x = outer side +
+      const h = (k) => (k < 0 || k >= L ? 0 : HEIGHT[k]);
+      const edge = (i) => i === I0 || i === I1;
+      const inBox = (i, j, k) => i >= I0 && i <= I1 && j >= 0 && j < h(k) && !(edge(i) && j === h(k) - 1 && j >= 2);
+      for (let k = 0; k < L; k++) for (let i = I0; i <= I1; i++) for (let j = 0; j < h(k); j++) {
+        if (!inBox(i, j, k)) continue;
+        const up = !inBox(i, j + 1, k);
+        if (!up && inBox(i + 1, j, k) && inBox(i - 1, j, k) && inBox(i, j, k + 1) && inBox(i, j, k - 1) && j > 0) continue; // inside
+        let c = C.upper;
+        if (j === 0) c = C.sole;
+        else if (j === 1) c = up ? C.upper : C.line;
+        else if (edge(i) && j === 2 + Math.floor((k - 2) / 2) && k >= 2 && k <= 8) c = C.stripe;
+        if (up && (i === 0 || i === -1) && k >= 5 && k <= 8) c = (k + i) % 2 ? C.laceA : C.laceB;
+        if (up && i > I0 && i < I1 && (k === 1 || k === 2) && j === h(k) - 1) c = C.collar;
+        const n = new THREE.Vector3((i + 0.5) / 3, up ? 2 : 0.3, (k - 5) / 5).normalize();
+        const col = c0 + (sgn > 0 ? i : -1 - i); // mirror: the wide side is always outward
+        const x = (col + 0.5) * V + ox, y = (j + 0.5) * V, z = (k0 - 3 + k + 0.5) * V;
+        n.x *= sgn;
+        list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c: new THREE.Color(c), n });
       }
     }
   }
