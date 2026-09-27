@@ -879,6 +879,8 @@ function composeLook() {
     look.outfit = { ...HERO_LOOK.outfit };
     for (const k of ['shirt', 'shorts', 'shoe']) colors[k] = HERO_COLORS[k];
     if (scanned) {
+      // no hair found (or an unreliable hair mask) -> short hair, so the big chibi head never shows a bare crown
+      if (look.hair.style === 'none' || look.hair.style == null) look.hair = { ...look.hair, style: 'short', profile: null };
       colors.skin = snapColor(colors.skin, SKIN_TONES);
       colors.hair = colors.brow = colors.beard = contrastHair(snapColor(colors.hair, HAIR_TONES), colors.skin);
     }
