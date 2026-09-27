@@ -985,7 +985,7 @@ function avatarBox(av = avatar) {
   const box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
   // top: the top of the figure (big afro) when known, else head + 0.30 m
   const topY = av.topY != null ? av.topY + (head.y - av.bindHeadY) : head.y + 0.3;
-  for (const w of [[head.x, topY, head.z], [head.x - 0.3, topY, head.z], [head.x + 0.3, topY, head.z], [x0, 0, 0], [x0 - 0.35, shY, 0], [x0 + 0.35, shY, 0], [x0 - 0.15, 0, 0.12], [x0 + 0.15, 0, 0.12]]) {
+  for (const w of [[head.x, topY, head.z], [head.x - 0.3, topY, head.z], [head.x + 0.3, topY, head.z], [x0, 0, 0], [x0 - 0.35, shY, 0], [x0 + 0.35, shY, 0], [x0 - 0.2, 0, 0.32], [x0 + 0.2, 0, 0.32], [x0 - 0.2, 0, -0.32], [x0 + 0.2, 0, -0.32]]) { // (sneaker toes / heels, any turn)
     p.set(...w).project(camera);
     const sx = rect.left + ((p.x + 1) / 2) * rect.width, sy = rect.top + ((1 - p.y) / 2) * rect.height;
     box.left = Math.min(box.left, sx); box.right = Math.max(box.right, sx); box.top = Math.min(box.top, sy); box.bottom = Math.max(box.bottom, sy);
