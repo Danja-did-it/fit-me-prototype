@@ -386,3 +386,13 @@
   body fat, muscle mass since Anfang); accessory rail; demo caption at the top with avatarBox(); legend on the stage;
   "Fortschritt" view with Anfang / Jetzt / Ziel side by side, kg / KF labels and a progress bar.
   Fixes: scanned hair in game style (no bare pointed crown), avatarBox includes the afro. Validate all <= 1.4 cm.
+- Package C (Voxel-Double polish, v39): proportions (head x1.95 so head cubes are within 10 % of body cubes, torso
+  x0.97, legs x0.78, slim neck): hair top to chin 35.8 %, chin to waist 23.4 %, waist to sole 40.8 %; afro dome with
+  near-black gaps + warm tops; game AO rebased (flat surfaces keep their color) -> torso #d28153 (concept #d08252);
+  blocky ab / pec highlights; rim term in the shader (uRim, game only, not on near-black albedo); box sneakers in
+  body cubes; pants with waistband, drawstring, lower 3x4 logo, calm fold ridges; flatter face, 3-cube mouth, nose
+  hint, ears, wider shades with a 2-row black bridge; bead-U chain; gym backdrop (window frame, skyline, palms, tiles).
+  Grader round 1 (v38): 4.0/5 - fixed: progress labels on small stages / desktop names behind the shoes, legend as a
+  column (never over avatar or rail), demo framing incl. sneakers, 44 px tap targets, no chips on the small stage,
+  calmer pants. Realistic render pixel-identical to v37, validate within noise (all <= 1.6 / 1.5 cm in 2 runs).
+  Screenshots: docs/screenshots/v39-voxel-double.png, v39-app-avatar.png, v39-progress.png.
