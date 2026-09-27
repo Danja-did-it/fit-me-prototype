@@ -1139,7 +1139,7 @@ if (uRim > 0.0) {
   // painting stay consistent; the head is only moved down (the photo face map is corrected by
   // chibiShift) and made bigger later on the finished cubes (stylize).
   chibify(pos, W) {
-    const KL = 0.78, KT = 0.97, KA = 0.56;
+    const KL = 0.78, KT = 0.97, KA = 0.6;
     const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
     const f = (y) => (y < yh ? y * KL : y < ys ? yh * KL + (y - yh) * KT : yh * KL + (ys - yh) * KT + (y - ys));
     const arm = (y) => (y < ys ? f(ys) - (ys - y) * KA : f(y));
@@ -1376,8 +1376,8 @@ if (uRim > 0.0) {
   // edges, laces, a dark collar opening and a diagonal side stripe.
   addSneakerBoxes(byJoint, worldOf, ctx, V) {
     const { W } = ctx, ox = this.grid.body;
-    const HEIGHT = [7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 5], L = HEIGHT.length; // rows per length step, heel -> toe (incl. 2 sole rows)
-    const I0 = -3, I1 = 2; // columns across the foot (6 wide, the extra column on the outer side)
+    const HEIGHT = [7, 7, 7, 7, 7, 6, 6, 6, 5, 5, 5, 4], L = HEIGHT.length; // rows per length step, heel -> toe (incl. 2 sole rows; toe box a step lower)
+    const I0 = -3, I1 = 3; // columns across the foot (7 wide)
     const C = { upper: 0xe6e8eb, sole: 0xd6d6d6, line: 0x8a8a8a, laceA: 0xc9ced6, laceB: 0x9aa3ae, collar: 0x5d636b, stripe: 0xaab2bd };
     for (const side of ['L', 'R']) {
       const jn = 'ankle' + side, a = W[jn], jw = worldOf[jn], list = (byJoint[jn + '|' + V] ||= []);
@@ -1393,9 +1393,9 @@ if (uRim > 0.0) {
         if (j === 0) c = C.sole;
         else if (j === 1) c = up ? C.upper : C.line;
         else if (edge(i) && j === 2 + Math.floor((k - 2) / 2) && k >= 2 && k <= 8) c = C.stripe;
-        if (up && (i === 0 || i === -1) && k >= 5 && k <= 8) c = (k + i) % 2 ? C.laceA : C.laceB;
+        if (up && Math.abs(i) <= 1 && k >= 5 && k <= 8) c = (k + i) % 2 ? C.laceA : C.laceB;
         if (up && i > I0 && i < I1 && (k === 1 || k === 2) && j === h(k) - 1) c = C.collar;
-        const n = new THREE.Vector3((i + 0.5) / 3, up ? 2 : 0.3, (k - 5) / 5).normalize();
+        const n = new THREE.Vector3(i / 3, up ? 2 : 0.3, (k - 5) / 5).normalize();
         const col = c0 + (sgn > 0 ? i : -1 - i); // mirror: the wide side is always outward
         const x = (col + 0.5) * V + ox, y = (j + 0.5) * V, z = (k0 - 3 + k + 0.5) * V;
         n.x *= sgn;
