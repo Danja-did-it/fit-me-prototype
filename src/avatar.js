@@ -951,7 +951,7 @@ if (uRim > 0.0) {
       const yc = (xx) => yLow + (yTop - yLow) * Math.min(1, (Math.abs(xx) / xw) ** 2);
       const col = cellX(x), xc = (col + 0.5) * q.size + (q.offX || 0), inner = xc - Math.sign(xc) * q.size;
       const r0 = cellY(yc(xc)), r1 = cellY(yc(Math.abs(xc) < q.size ? xc : inner)), row = cellY(y);
-      if (Math.abs(xc) <= xw && (row === r0 || (row < r0 && row > r1))) {
+      if (Math.abs(xc) <= xw && (row === r0 || (row < r0 && row > r1 && row >= r0 - 2))) {
         color = (col & 1) ? 0xf2f4f7 : 0x8d939b;
         special = null;
         result = { layers: 1, color };

@@ -84,10 +84,29 @@ const canvasTex = (w, h, paint) => {
   paint(c.getContext('2d'), w, h);
   return new THREE.CanvasTexture(c);
 };
-const sunset = canvasTex(2, 512, (g, w, h) => {
+// gym by a big window at sunset: city skyline with a few lit windows, window frame (mullions + transom),
+// palm silhouettes at the edges (fixed pseudo-random numbers, the same picture every time)
+const sunset = canvasTex(512, 512, (g, w, h) => {
   const grad = g.createLinearGradient(0, 0, 0, h);
   for (const [t, col] of [[0, '#151a2b'], [0.22, '#2e2a45'], [0.34, '#b8704f'], [0.4, '#e0925e'], [0.47, '#6a4640'], [0.58, '#2a201d'], [1, '#121012']]) grad.addColorStop(t, col);
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  let seed = 11; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const base = 0.47 * h;
+  for (let x = 0; x < w;) {
+    const bw = 12 + rnd() * 28, bh = 20 + rnd() * 60;
+    g.fillStyle = 'rgba(58,47,69,0.7)'; g.fillRect(x, base - bh, bw - 2, bh);
+    g.fillStyle = 'rgba(242,195,138,0.6)';
+    for (let k = 0, n = 2 + Math.floor(rnd() * 3); k < n; k++) g.fillRect(x + 2 + rnd() * (bw - 8), base - bh + 4 + rnd() * (bh - 10), 2, 3);
+    x += bw;
+  }
+  g.fillStyle = '#1a1620'; // palms
+  for (const [px, dir] of [[18, 1], [w - 18, -1]]) {
+    g.fillRect(px - 3, 0.4 * h, 6, 0.2 * h);
+    for (let k = 0; k < 5; k++) { g.beginPath(); g.ellipse(px + dir * (k - 2) * 12, 0.4 * h - 4 + Math.abs(k - 2) * 5, 22, 5, dir * (k - 2) * 0.45, 0, Math.PI * 2); g.fill(); }
+  }
+  g.fillStyle = '#14121a'; // window frame
+  for (const fx of [0.12, 0.5, 0.88]) g.fillRect(fx * w - 3, 0, 6, 0.58 * h);
+  g.fillRect(0, 0.28 * h - 3, w, 6);
 });
 sunset.colorSpace = THREE.SRGBColorSpace;
 const fade = canvasTex(256, 256, (g, w, h) => {
@@ -95,9 +114,15 @@ const fade = canvasTex(256, 256, (g, w, h) => {
   grad.addColorStop(0, '#fff'); grad.addColorStop(0.55, '#fff'); grad.addColorStop(1, '#000');
   g.fillStyle = grad; g.fillRect(0, 0, w, h);
 });
+// gym floor: dark tiles with a hint of sheen, the edge fades out
+const tiles = canvasTex(512, 512, (g, w, h) => {
+  g.fillStyle = '#1a1514'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#2a2220'; for (let k = 0; k < w; k += 64) { g.fillRect(k, 0, 2, h); g.fillRect(0, k, w, 2); }
+});
+tiles.colorSpace = THREE.SRGBColorSpace;
 const floorGame = new THREE.Mesh(
   new THREE.CircleGeometry(2.2, 64),
-  new THREE.MeshStandardMaterial({ color: 0x1a1514, roughness: 0.5, metalness: 0.15, alphaMap: fade, transparent: true })
+  new THREE.MeshStandardMaterial({ map: tiles, roughness: 0.35, metalness: 0.3, alphaMap: fade, transparent: true })
 );
 floorGame.rotation.x = -Math.PI / 2;
 floorGame.receiveShadow = true;
