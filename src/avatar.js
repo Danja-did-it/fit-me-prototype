@@ -320,9 +320,9 @@ vCube = position / (0.5 * vCubeSize);`;
   diffuseColor.rgb *= 1.0 - uBevel * smoothstep(0.003, 0.007, vCubeSize) * smoothstep(0.7, 1.0, mid);
   if (uFaceTone > 0.0 && a.y > 0.999 && a.y >= max(a.x, a.z)) diffuseColor.rgb *= vCube.y > 0.0 ? 1.0 + 0.14 * uFaceTone : 1.0 - 0.18 * uFaceTone;
 }`;
-    const inject = (shader, normals) => {
+    const inject = (shader, normals, hair = false) => {
       shader.uniforms.boneM = this.boneUniform;
-      if (normals) Object.assign(shader.uniforms, this.shading);
+      if (normals) Object.assign(shader.uniforms, this.shading, hair ? this.hairShading : {});
       let v = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\n' + skinChunk)
         .replace('#include <project_vertex>', project)
         // shadows are looked up at the moved position too
@@ -344,6 +344,12 @@ if (uRim > 0.0) {
 }`);
     };
     this.material.onBeforeCompile = (shader) => inject(shader, true);
+    // game style hair: its own dull material (no environment sheen, no top-face lift, no rim), so the gaps
+    // between the curls stay near-black
+    this.hairShading = { uFaceTone: { value: 0 }, uRim: { value: 0 } };
+    this.hairMaterial = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, envMapIntensity: 0 });
+    this.hairMaterial.onBeforeCompile = (shader) => inject(shader, true, true);
+    this.hairMaterial.customProgramCacheKey = () => 'hair';
     this.depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
     this.depthMaterial.onBeforeCompile = (shader) => inject(shader, false);
     this.body = { ...DEFAULT_BODY };
@@ -653,10 +659,10 @@ if (uRim > 0.0) {
         (byJoint[key] ||= []).push({ p: p2, c: new THREE.Color(e.color).multiplyScalar(1 - 0.06 * k), n: e.n });
       }
     }
+    if (game) this.addFaceBlock(byJoint, worldOf, ctx, Vh); // (sets ctx.fb: the anchors for hair and shades)
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
     if (this.body.look.acc?.glasses) this.addGlasses(byJoint, worldOf, ctx, Vh); // head cube size
-    if (game) this.addJawEars(byJoint, worldOf, ctx, Vh);
     if (this.style === 'game') this.stylize(byJoint, worldOf, ctx);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
@@ -664,11 +670,12 @@ if (uRim > 0.0) {
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
       const jw = worldOf[name];
-      for (const r of list) (bySize[size] ||= []).push({ ...r, w: [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]], jn: name });
+      for (const r of list) (bySize[size + (game && r.hair ? '|hair' : '')] ||= []).push({ ...r, w: [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]], jn: name });
     }
     const m4 = new THREE.Matrix4();
     this.geometries = {};
-    for (const [size, list] of Object.entries(bySize)) {
+    for (const [key, list] of Object.entries(bySize)) {
+      const [size, tag] = key.split('|');
       const geo = new THREE.BoxGeometry(+size, +size, +size);
       const nb = new Float32Array(list.length * 3), sj = new Float32Array(list.length * 4), sw = new Float32Array(list.length * 4);
       list.forEach((r, i) => {
@@ -679,9 +686,9 @@ if (uRim > 0.0) {
       geo.setAttribute('instanceNormal', new THREE.InstancedBufferAttribute(nb, 3));
       geo.setAttribute('skinJ', new THREE.InstancedBufferAttribute(sj, 4));
       geo.setAttribute('skinW', new THREE.InstancedBufferAttribute(sw, 4));
-      this.geometries[size] = geo;
-      const mesh = new THREE.InstancedMesh(geo, this.material, list.length);
-      mesh.name = 'cubes-' + size;
+      this.geometries[key] = geo;
+      const mesh = new THREE.InstancedMesh(geo, tag === 'hair' ? this.hairMaterial : this.material, list.length);
+      mesh.name = 'cubes-' + size + (tag ? '-' + tag : '');
       mesh.customDepthMaterial = this.depthMaterial; // skinned shadows
       mesh.castShadow = mesh.receiveShadow = true;
       // game style: no cast shadows on the head (the shades / hair shadows made the flat face blotchy)
@@ -693,7 +700,7 @@ if (uRim > 0.0) {
       this.root.add(mesh);
     }
     // top of the figure (hair included) in bind pose, e.g. for labels above the avatar
-    this.topY = Math.max(...Object.entries(bySize).map(([size, list]) => list.reduce((m, r) => Math.max(m, r.w[1]), 0) + size / 2));
+    this.topY = Math.max(...Object.entries(bySize).map(([key, list]) => list.reduce((m, r) => Math.max(m, r.w[1]), 0) + parseFloat(key) / 2));
     this.bindHeadY = worldOf.head[1];
     this.marks = { chinY: face.chinY, waistY: ctx.waistY, eyeY: face.eye.y, hemY: W.ankleL[1] + 0.02 * s, shoulderY: (W.shoulderL[1] + W.shoulderR[1]) / 2 }; // for checks
     this.bindInv = JOINT_NAMES.map((j) => new THREE.Matrix4().makeTranslation(-worldOf[j][0], -worldOf[j][1], -worldOf[j][2]));
@@ -1058,76 +1065,91 @@ if (uRim > 0.0) {
   // face) around a recessed dark lens (1 cube in front) with one grey catch light, a 1-cube bridge in the
   // top row only (skin shows below it), temples straight back to the ears. As wide as the face at eye height.
   addWayfarers(byJoint, worldOf, ctx, V) {
-    const { face, s } = ctx, E = face.eye, hw = worldOf.head, ox = this.grid.head;
+    const fb = ctx.fb;
+    if (!fb) return;
+    const { s } = ctx, hw = worldOf.head, { erow, kz, cX } = fb;
     const list = (byJoint['head|' + V] ||= []);
-    const colX = (i) => (i + 0.5) * V + ox, rowY = (j) => (j + 0.5) * V; // cube center of column i / row j
-    const cX = Math.floor((0 - ox) / V), erow = Math.floor(E.y / V);    // center column, eye row
-    // front of the face over the eyes and the face half width (in columns) at eye height
-    let zf = -Infinity, half = 0;
-    for (const [key, l] of Object.entries(byJoint)) {
-      if (!key.startsWith('head|')) continue;
-      for (const r of l) {
-        if (r.v === undefined || this.vertEar[r.v]) continue; // face skin cubes only (not hair, not the ears)
-        const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2];
-        if (Math.abs(y - E.y) > 1.5 * V || z < E.z - 0.03 * s) continue;
-        if (Math.abs(x) < E.x + 0.02 * s) zf = Math.max(zf, z);
-        half = Math.max(half, Math.abs(Math.floor((x - ox) / V) - cX));
-      }
+    const colX = (i) => (i + 0.5) * V + fb.ox, rowY = (j) => (j + 0.5) * V, zAt = (k) => (k + 0.5) * V;
+    const frame = new THREE.Color(0x0b0b0b), lens = new THREE.Color(0x1c1c1c), glint = new THREE.Color(0x3a3a3a), n = new THREE.Vector3(0, 0, 1);
+    const add = (i, j, k, c, nn = n) => list.push({ p: [colX(cX + i) - hw[0], rowY(j) - hw[1], zAt(k) - hw[2]], c: c.clone(), n: nn });
+    const addFrame = (i, j) => { add(i, erow + j, kz + 1, frame); add(i, erow + j, kz + 2, frame); };
+    // 6 rows high (eye row -3 .. +2): frame top + bottom rows, outer + inner columns, 4-row lenses
+    for (let i = -7; i <= 7; i++) {
+      for (const j of [-3, 2]) if (!(i === 0 && j === -3)) addFrame(i, j); // frame top + bottom (nose free below)
+      if (Math.abs(i) === 7 || Math.abs(i) === 1) for (const j of [-2, -1, 0, 1]) addFrame(i, j); // outer + inner columns
+      if (Math.abs(i) >= 2 && Math.abs(i) <= 6) for (const j of [-2, -1, 0, 1]) add(i, erow + j, kz + 1, j === 1 && Math.abs(i) === 5 ? glint : lens);
+    }
+    addFrame(0, 1); // bridge: the top 2 rows of the center column (row +2 is the frame row)
+    // temples: just outside the face block, back to the ears
+    for (const sx of [-1, 1]) for (let k = kz; k >= kz - 2; k--) add(sx * 8, erow + 1, k, frame, new THREE.Vector3(sx, 0, 0));
+  }
+
+  // Voxel-Double face (game style): a square block like in voxel games instead of the tapering mesh face. The
+  // scan still sets the eye row, mouth row and chin row. Rows (half widths in head cubes): chin 5, jaw + cheeks
+  // 6, shades zone (eye row -3..+2) and 2 forehead rows 7. Front at the cheek plane kz, side walls 6 deep, flat
+  // chin underside; the mesh face cubes in front of it are removed. Mouth 3x1, a nose-tip cube, blocky ears,
+  // sideburns in the hair color on the side walls. Sets ctx.fb (anchors for hair and shades).
+  addFaceBlock(byJoint, worldOf, ctx, V) {
+    const { face, s } = ctx, E = face.eye, hw = worldOf.head, ox = this.grid.head, key = 'head|' + V;
+    const list = byJoint[key];
+    if (!list) return;
+    const cellX = (x) => Math.floor((x - ox) / V), cellY = (y) => Math.floor(y / V), cX = cellX(0), erow = cellY(E.y);
+    // cheek plane at eye height (beside the nose) and the chin row
+    let zf = -Infinity;
+    for (const r of list) {
+      if (r.v === undefined || this.vertEar[r.v]) continue;
+      const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2], a = Math.abs(cellX(x) - cX);
+      if (a >= 3 && a <= 5 && Math.abs(cellY(y) - erow) <= 1) zf = Math.max(zf, z);
     }
     if (!Number.isFinite(zf)) return;
     const kz = Math.floor(zf / V), zAt = (k) => (k + 0.5) * V;
-    const frame = new THREE.Color(0x0b0b0b), lens = new THREE.Color(0x1c1c1c), glint = new THREE.Color(0x3a3a3a), n = new THREE.Vector3(0, 0, 1);
-    const add = (i, j, k, c, nn = n) => list.push({ p: [colX(cX + i) - hw[0], rowY(j) - hw[1], zAt(k) - hw[2]], c: c.clone(), n: nn });
-    const w = Math.max(4, Math.min(7, half + 1)); // eyepiece width: the shades stick out 1 cube beyond the face
-    for (const j of [erow, erow + 1]) { add(0, j, kz + 1, frame); add(0, j, kz + 2, frame); } // black bridge, 2 rows (skin only below)
-    for (const sx of [-1, 1]) {
-      for (let a = 1; a <= w; a++) for (let j = erow - 1; j <= erow + 1; j++) {
-        const isFrame = j === erow + 1 || a === 1 || a === w;
-        if (isFrame) { add(sx * a, j, kz + 1, frame); add(sx * a, j, kz + 2, frame); }
-        else add(sx * a, j, kz + 1, a === 2 && j === erow ? glint : lens);
-      }
-      // temples: from the outer frame column straight back toward the ears
-      for (let k = kz; zAt(k) > zf - 0.085 * s; k--) add(sx * w, erow + 1, k, frame, new THREE.Vector3(sx, 0, 0));
-    }
-  }
-
-  // Voxel-Double face shape (game style, head cubes before the head is scaled up): a square jaw - the rows
-  // from the mouth down keep >= 85 % of the cheek width, then one step to a flat chin >= 60 % - and small
-  // blocky ears just behind the sideburns.
-  addJawEars(byJoint, worldOf, ctx, V) {
-    const { face, s } = ctx, E = face.eye, hw = worldOf.head, ox = this.grid.head, skin = new THREE.Color(this.body.colors.skin);
-    const list = byJoint['head|' + V];
-    if (!list) return;
-    const cellX = (x) => Math.floor((x - ox) / V), cellY = (y) => Math.floor(y / V), cX = cellX(0);
-    const front = new Map(); // row -> { half, z } of the face-front shell
+    let crow = Infinity;
     for (const r of list) {
-      if (r.v === undefined || this.vertEar[r.v]) continue; // face skin cubes (not hair, glasses, ears)
-      const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2], row = cellY(y), f = front.get(row) || { half: 0, z: -Infinity };
-      if (z < E.z - 0.04 * s) continue; // front half of the head
-      f.half = Math.max(f.half, Math.abs(cellX(x) - cX)); f.z = Math.max(f.z, z);
-      front.set(row, f);
+      if (r.v === undefined) continue;
+      const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2];
+      if (Math.abs(cellX(x) - cX) <= 3 && z >= zAt(kz - 3) && y < E.y) crow = Math.min(crow, cellY(y));
     }
-    const erow = cellY(E.y), mrow = cellY(face.mouthY), crow = Math.min(...front.keys()); // lowest face row = chin
-    const cheek = Math.max(...[erow - 1, erow, erow + 1].map((r) => front.get(r)?.half ?? 0));
-    if (!cheek || !Number.isFinite(crow)) return;
-    const n = new THREE.Vector3(0, 0, 1).multiplyScalar(2.5), zMouth = front.get(mrow)?.z ?? -Infinity;
-    for (let row = mrow; row >= crow; row--) {
-      const f = front.get(row);
-      if (!f || f.z < zMouth - 2.5 * V || f.half < 0.5 * cheek) continue; // (not the under-chin rows: they float)
-      const below = front.get(row - 1); // the chin row (nothing below it) only to 60 %
-      const target = Math.round(!below || row === crow ? 0.6 * cheek : 0.85 * cheek);
-      const zc = (Math.floor(f.z / V) + 0.5) * V; // the row's front plane
-      for (let a = f.half + 1; a <= target; a++) for (const sx of [-1, 1]) {
-        const x = (cX + sx * a + 0.5) * V + ox, y = (row + 0.5) * V;
-        list.push({ p: [x - hw[0], y - hw[1], zc - hw[2]], c: skin.clone().multiplyScalar(row === crow ? 0.8 : 0.97), n });
+    if (!Number.isFinite(crow)) return;
+    crow = Math.min(crow, erow - 7);
+    const mrow = Math.max(crow + 1, Math.min(erow - 5, cellY(face.mouthY)));
+    const half = (row) => (row === crow ? 5 : row <= erow - 4 ? 6 : 7), top = erow + 4;
+    ctx.fb = { erow, crow, mrow, kz, cX, ox, V, top };
+    // remove the mesh face in front of / inside the block (nose, lips, cheeks, eyes)
+    byJoint[key] = list.filter((r) => {
+      if (r.v === undefined) return true;
+      const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2], row = cellY(y), k = Math.floor(z / V);
+      if (k > kz) return false;
+      return !(row >= crow && row <= top && Math.abs(cellX(x) - cX) <= half(row) && k >= kz - 6);
+    });
+    const out = byJoint[key], c = this.body.colors, skin = new THREE.Color(c.skin), hairC = new THREE.Color(c.hair);
+    const glasses = this.body.look.acc?.glasses;
+    const add = (i, j, k, col, n) => out.push({ p: [(cX + i + 0.5) * V + ox - hw[0], (j + 0.5) * V - hw[1], zAt(k) - hw[2]], c: col, n });
+    const skinAt = (i, j, k, f = 1) => skin.clone().multiplyScalar(f * (0.98 + 0.04 * hash(i, j, k, 41)));
+    const nF = new THREE.Vector3(0, 0, 2.5), nD = new THREE.Vector3(0, -1, 0);
+    const eyeCol = Math.round((E.x) / V); // eye columns from the center (without glasses)
+    for (let j = crow; j <= top; j++) {
+      const h = half(j);
+      for (let i = -h; i <= h; i++) {
+        let col = skinAt(i, j, kz);
+        if (j === mrow && Math.abs(i) <= 1) col = skinAt(i, j, kz, 0.7);                   // mouth line
+        else if (j === erow - 4 && i === 0) col = skinAt(i, j, kz, 0.9);                    // nose tip
+        else if (!glasses && Math.abs(i) === eyeCol && (j === erow || j === erow + 1)) col = new THREE.Color(0x1a1410); // pupils
+        else if (!glasses && Math.abs(i) === eyeCol + 1 && j === erow + 1) col = new THREE.Color(0xf4f1ea);             // catch light
+        else if (!glasses && j === erow + 3 && Math.abs(i) >= eyeCol - 1 && Math.abs(i) <= eyeCol + 2) col = hairC.clone(); // brows
+        if (j === crow) col.multiplyScalar(0.95);
+        add(i, j, kz, col, nF);
+      }
+      for (const sx of [-1, 1]) for (let k = kz - 1; k >= kz - 6; k--) {
+        const burn = j >= erow - 1 && k >= kz - 2; // sideburns on the side walls
+        add(sx * h, j, k, burn ? hairC.clone() : skinAt(sx * h, j, k, 0.97), new THREE.Vector3(sx, 0, 0));
       }
     }
-    // ears: 2 rows x 2 deep per side, just outside the face width, behind the face front
-    const f0 = front.get(erow - 1) || front.get(erow);
-    const kf = Math.floor(f0.z / V);
-    for (const sx of [-1, 1]) for (const row of [erow - 1, erow - 2]) for (const dk of [4, 5]) {
-      const x = (cX + sx * (cheek + 1) + 0.5) * V + ox, y = (row + 0.5) * V, z = (kf - dk + 0.5) * V;
-      list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: skin.clone().multiplyScalar(dk === 5 ? 0.75 : 0.95), n: new THREE.Vector3(sx, 0, 0) });
+    for (let i = -5; i <= 5; i++) for (let k = kz - 1; k >= kz - 5; k--) add(i, crow, k, skinAt(i, crow, k, 0.8), nD); // chin underside
+    // ears: 2 rows, 2 deep, just outside the block
+    for (const sx of [-1, 1]) for (const k of [kz - 3, kz - 4]) {
+      add(sx * 8, erow - 3, k, skinAt(8, erow - 3, k, 0.95), new THREE.Vector3(sx, 0, 0));
+      add(sx * 8, erow - 4, k, skinAt(8, erow - 4, k, 0.95), new THREE.Vector3(sx, 0, 0));
+      add(sx * 7, erow - 4, k, skinAt(7, erow - 4, k, 0.75), new THREE.Vector3(sx, 0, 0));
     }
   }
 
@@ -1322,11 +1344,12 @@ if (uRim > 0.0) {
     // game style afro (like the concept): taller than wide, clumpy outline, a fringe down to the shades
     const game = this.style === 'game', gAfro = game && st.cover === 'afro';
     const ox = this.grid.head; // x offset of the head cube grid
+    const fb = game ? ctx.fb : null; // face block anchors (game style)
     // (game style: hair at least ~1.3 head cubes thick, so short hair is a closed cube layer, no bare patches)
     const thick = Math.max(st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.35 : 1), game ? 1.3 * V : 0);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
-    const R = [0.083 * s * (gAfro ? 1.3 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
+    const R = [0.083 * s * (gAfro ? 1.2 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
     const chin = face.chinY, shoulder = W.shoulderL[1];
     let bottom = { nape: E.y - 0.045 * s, chin: chin - 0.005 * s, shoulder: shoulder - 0.14 * s, ear: E.y - 0.035 * s, top: E.y + 0.045 * s }[st.bottom];
     // real length from the hair scan (medium / long only)
@@ -1386,6 +1409,15 @@ if (uRim > 0.0) {
     };
     const inShell = (x, y, z) => {
       if (y > C[1] + R[1] + maxT * 1.2 || y < endY(x, z)) return false;
+      if (fb) {
+        // game style: the face block stays free (the hair frames it), the fringe ends 1-2 cube rows above the
+        // shades (a ragged edge only upward), the afro's side lobes end 1 row below the shades; only the
+        // back of the head goes down to the nape
+        const col = Math.floor((x - ox) / V) - fb.cX, row = Math.floor(y / V);
+        const fringe = fb.erow + 5 + (hash(col, 0, 0, 11) > 0.6 ? 1 : 0);
+        if (Math.abs(col) <= 7 && z >= (fb.kz - 3 + 0.5) * V && row < fringe) return false;
+        if (gAfro && row < fb.erow - 4 && z >= (fb.kz - 7 + 0.5) * V) return false;
+      }
       const frontZ = z - C[2];
       const tp = outlineT(y);
       let t = tp == null ? thick : Math.max(0.6 * thick, 0.7 * tp + 0.3 * thick); // outline, but keeps the style's character
@@ -1414,7 +1446,7 @@ if (uRim > 0.0) {
       // face opening: no hair in front of the face below the hair line (unless fringe)
       let hairLine = look.bangs || st.bangs ? E.y + (st.bangs ? 0.02 : 0.012) * s : ctx.hairLine(x);
       // game afro: a fringe with a ragged lower edge, ending 0-1 cube above the top of the shades
-      if (gAfro) hairLine = (Math.floor(E.y / V) + 2 + (hash(Math.floor((x - ox) / V), 0, 0, 11) > 0.6 ? 0 : 1)) * V;
+      if (fb) hairLine = -Infinity; // (the face window above decides)
       if (frontZ > 0.03 * s && y < hairLine) return false;
       if (close) {
         // sides only above the ears, back down to a tapered nape
@@ -1440,8 +1472,9 @@ if (uRim > 0.0) {
     function clumpHash(x, y, z) { const cs = 0.034 * s; return hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
     // game style hair colors: near-black base with a darker / lighter value per cube, a mid tone on some
     // clumps, and warm highlights ONLY on upward-facing clumps (no speckle over the whole hair)
-    const gap = col.clone().multiplyScalar(0.12), hiC = col.clone().multiplyScalar(1.15);
-    hiC.setRGB(Math.max(hiC.r, 0.102), Math.max(hiC.g, 0.047), Math.max(hiC.b, 0.025)); // at least #5a3e2c (linear values)
+    // (dark hair: gap #060403, base #120c09, highlight #3a2e27 - dull, not orange)
+    const gap = col.clone().multiplyScalar(0.08), base = col.clone().multiplyScalar(0.5), hiC = col.clone().multiplyScalar(1.6);
+    hiC.setRGB(Math.max(hiC.r, 0.0423), Math.max(hiC.g, 0.0273), Math.max(hiC.b, 0.0204)); // at least #3a2e27 (linear values)
     for (let y = snap(yLo); y < C[1] + R[1] + reach; y += V) {
       for (let x = snapX(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
         if (!inHair(x, y, z)) continue;
@@ -1478,12 +1511,12 @@ if (uRim > 0.0) {
             // curls: near-black gaps between the clumps (the thin clumps and the undersides), a base tone, and
             // warm highlights on free top faces of upward-facing clumps
             const up = !inHair(x, y + V, z); // top face of a clump is free
-            if (clumpHash(x, y, z) < 0.35 || n.y < -0.25) hc = gap.clone();
-            else if (up && hk > 0.65 && n.y > 0.45) hc = hiC.clone();
-            else hc = col.clone().multiplyScalar(0.6 + 0.2 * hv); // (the warm key light lifts it a lot)
+            if (clumpHash(x, y, z) < 0.4 || (!up && hv < 0.35) || n.y < -0.2) hc = gap.clone();
+            else if (up && hk > 0.65 && n.y > 0.6) hc = hiC.clone();
+            else hc = base.clone().multiplyScalar(0.9 + 0.15 * hv);
           } else hc = col.clone().multiplyScalar((0.9 + 0.12 * hash(strandOf(x, z), 1, 2, 3)) * (onBun && z > bunC[2] + 0.012 * s ? 0.55 : 1)); // even strands, the cube tops catch the light
         }
-        list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: hc, n });
+        list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: hc, n, hair: true });
       }
     }
   }
@@ -1607,7 +1640,7 @@ if (uRim > 0.0) {
   dispose() {
     this.root.traverse((o) => o.isInstancedMesh && o.dispose());
     for (const g of Object.values(this.geometries || {})) g.dispose();
-    this.material.dispose(); this.depthMaterial.dispose();
+    this.material.dispose(); this.depthMaterial.dispose(); this.hairMaterial.dispose();
     this.root.removeFromParent();
     this.root.clear();
   }
