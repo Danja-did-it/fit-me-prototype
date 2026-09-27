@@ -194,3 +194,16 @@ body[data-stage="progress"] #ctaScan, body[data-stage="progress"] #stageLegend {
 
 #progressLabels.compact .pl-chip { padding: 4px 6px; font-size: 10px; }
 #progressLabels.compact .pl-chip b { font-size: 11px; }
+
+/* phones: tap targets at least 44 px, and a calmer small stage while another tab's content is open */
+@media (max-width: 760px) {
+  button, .btn, select, label.field select { min-height: 44px; }
+  label.check { min-height: 44px; }
+  label.check input { width: 20px; height: 20px; }
+  details summary { min-height: 44px; display: flex; align-items: center; }
+  .demo-btn { height: 44px; }
+  #modeSeg { height: auto; }
+  #modeSeg button { height: 44px; min-height: 44px; }
+  .seg button { min-height: 44px; }
+  body:not([data-tab="avatar"]) #chips { display: none; } /* (the stage is small there; the numbers are on the Avatar tab) */
+}
