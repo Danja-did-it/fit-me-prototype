@@ -933,9 +933,9 @@ if (uRim > 0.0) {
       else {
         // fold ridges: every 3rd row on the lower leg (every 4th on the thigh), in 2-4 cube segments
         const every = knee ? 3 : 4, seg = hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 3), row, jn.length, 17);
-        const ridge = (r) => r % every === 0 && hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 3), r, jn.length, 17) > (knee ? 0.45 : 0.6);
-        if (ridge(row) && seg > 0) color = n.x < -0.2 || n.z > 0.5 ? 0x54423a : 0x3a2c24;
-        else if (ridge(row + 1)) color = new THREE.Color(c.shorts).multiplyScalar(0.8).getHex(); // under a ridge
+        // (few, and only on the lit side: more read as brown speckle)
+        const ridge = (r) => knee && r % every === 0 && hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 4), r, jn.length, 17) > 0.55;
+        if (ridge(row) && seg > 0 && (n.x < -0.2 || n.z > 0.5)) color = 0x46403c;
       }
       const kneeY = W.kneeL[1];
       if (y >= hemY + 1.5 * q.size && !result) result = { layers: Math.abs(y - kneeY) < 0.08 * s && Math.abs(n.x) > 0.5 ? 2 : 1, color };
