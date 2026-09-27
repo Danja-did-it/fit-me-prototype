@@ -942,7 +942,21 @@ if (uRim > 0.0) {
     }
     // accessories: chain around the neck (with a small pendant), watch on the left wrist
     const acc = look.acc || {};
-    if (acc.chain && (jn === 'neck' || jn === 'chest')) {
+    if (acc.chain && game && jn === 'chest' && n.z > 0.3) {
+      // game style: a round U of bead cubes on the chest, from collarbone to collarbone (x = +-(neck half
+      // width + 2 cubes), 1 cube below the shoulders) down to ~30 % of the way from the neck to the navel;
+      // one bead per column, gaps between steep columns filled, beads bright / grey by column, 1 layer
+      const xw = 0.5 * 0.95 * (this.body.neckWidth || 0.12) + 3 * q.size, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
+      const navel = (W.hipL[1] + W.hipR[1]) / 2 + 0.12 * s, yTop = ys + 0.5 * q.size, yLow = ys - 0.33 * (ys - navel); // (neck base ~ shoulder joint height)
+      const yc = (xx) => yLow + (yTop - yLow) * Math.min(1, (Math.abs(xx) / xw) ** 2);
+      const col = cellX(x), xc = (col + 0.5) * q.size + (q.offX || 0), inner = xc - Math.sign(xc) * q.size;
+      const r0 = cellY(yc(xc)), r1 = cellY(yc(Math.abs(xc) < q.size ? xc : inner)), row = cellY(y);
+      if (Math.abs(xc) <= xw && (row === r0 || (row < r0 && row > r1))) {
+        color = (col & 1) ? 0xf2f4f7 : 0x8d939b;
+        special = null;
+        result = { layers: 1, color };
+      }
+    } else if (acc.chain && !game && (jn === 'neck' || jn === 'chest')) {
       const a = Math.atan2(x - W.neck[0], z - W.neck[2]), front = Math.max(0, Math.cos(a));
       // game style: a longer U down onto the upper chest, the band at least ~1 cube high (no gaps)
       // game style: a U hanging on the upper chest (lowest point ~1/3 from the neck to the navel), the
