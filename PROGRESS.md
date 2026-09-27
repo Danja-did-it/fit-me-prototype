@@ -396,3 +396,12 @@
   column (never over avatar or rail), demo framing incl. sneakers, 44 px tap targets, no chips on the small stage,
   calmer pants. Realistic render pixel-identical to v37, validate within noise (all <= 1.6 / 1.5 cm in 2 runs).
   Screenshots: docs/screenshots/v39-voxel-double.png, v39-app-avatar.png, v39-progress.png.
+- Package D (head at a glance + clean pants, v40): comparer round 3 was 3.7/5 ("head reads as a fur hat on a thin
+  face, pants shredded"). addFaceBlock(): a parametric square face block on the head grid (chin 11, jaw 13, shades
+  zone + forehead 15 cubes wide; scan sets eye / mouth / chin rows), mesh face in front removed, 3x1 mouth, nose
+  cube, ears, sideburns; shades 6 rows (45 px in the 300x580 frame), 2 lenses, 2-row bridge; hair face window,
+  fringe 5 rows above the eye row, afro side lobes end below the shades, hair in its own dull mesh (no env / rim /
+  top-face tone), gap #060403 / base #120c09 / highlight #3a2e27 -> hair p10 14.9, mean 23.7. addPantsHull(): closed
+  per-leg rings below the crotch (skin weights of the nearest leg cube, no seams in the squat), fold ridges in
+  segments, logo on the hull, thin grey drawstring -> pants SD 19.7, p98 92. Sneakers 7 cubes, arms KA 0.60.
+  Realistic render pixel-identical to v37; validate all <= 1.4 cm.
