@@ -141,11 +141,12 @@ details[open] summary { margin-bottom: 8px; }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .caption[hidden] { display: none; }
 @media (max-width: 760px) { .caption { font-size: 13.5px; } }
-#stageLegend { position: absolute; left: 12px; right: 12px; bottom: 16px; z-index: 2; padding: 7px 8px; font-size: 10px;
-  line-height: 1.5; color: var(--text); pointer-events: none; max-height: calc(4 * 1.5em + 14px); overflow: hidden; } /* (13 muscle groups need 4 lines on phones) */
+/* legend of the colored views: a column where the stat chips sit (left of the avatar, never over the rail) */
+#stageLegend { position: absolute; left: 12px; bottom: 16px; z-index: 2; width: 112px; padding: 6px 8px; font-size: 10px;
+  line-height: 1.35; color: var(--text); pointer-events: none; max-height: calc(100% - 72px); overflow: hidden; }
 #stageLegend[hidden] { display: none; }
-#stageLegend i { width: 8px; height: 8px; margin: 0 3px 0 5px; }
-#stageLegend i:first-child { margin-left: 0; }
+#stageLegend div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#stageLegend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 5px 0 0; }
 
 /* main action: hands-free guided scan */
 button.primary { background: var(--accent); color: #0b1a22; font-weight: 600; border-color: transparent; }

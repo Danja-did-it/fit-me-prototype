@@ -664,7 +664,9 @@ function updateComposition(dragging = false) {
   // the same legend on the stage when colors carry a meaning (muscle groups, fibers, tint); it takes the
   // place of the stat chips
   const legendOn = avatar.view !== 'look' || avatar.composition.tint;
-  $('stageLegend').innerHTML = LEGENDS[avatar.view];
+  // on the stage: one item per line in the chips' column (left of the avatar, clear of the rail)
+  $('stageLegend').innerHTML = LEGENDS[avatar.view].replace('Oberschenkel vorn', 'Beinstrecker').replace('Oberschenkel hinten', 'Beinbeuger')
+    .split('<i ').filter(Boolean).map((t) => `<div><i ${t.trim()}</div>`).join('');
   $('stageLegend').hidden = !legendOn;
   document.body.classList.toggle('legend-on', legendOn);
   rebuild();
