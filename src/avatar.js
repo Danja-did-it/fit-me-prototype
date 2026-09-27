@@ -590,7 +590,7 @@ if (uRim > 0.0) {
       face.lips = { corner: M.corner * eye.x, peak: M.peak * eye.x, top: toY(M.top) - face.mouthY, bottom: face.mouthY - toY(M.bottom) };
     }
     const s = this.body.height / 1.75;
-    const ctx = { W, L, face, s, waistY: W.hipL[1] + 0.1 * s };
+    const ctx = { W, L, face, s, waistY: W.hipL[1] + 0.1 * s, crotchY: W.hipL[1] - 0.02 * s };
     // ear box (both sides mirrored): hair runs above and behind the ears, never over them
     const ear = { top: -Infinity, bottom: Infinity, back: Infinity, front: -Infinity, inner: Infinity };
     for (let v = 0; v < BODY_VERTS; v++) {
@@ -631,14 +631,15 @@ if (uRim > 0.0) {
         const tissue = this.tissueOf(this.labels[vMain], vMain, cb, jn, isEye);
         stats.total++; stats[tissue.kind]++;
         const gd = this.grooveDist, groove = gd[a] * w0 + gd[b] * cb.u + gd[c] * cb.v; // distance to a muscle border
-        const res = this.colorCube(col, { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, offX, ctx });
+        const qq = { jn, x: cb.x, y: cb.y, z: cb.z, n: nrm, isEye, hand: this.vertHand[vMain], ear: this.vertEar[vMain], groove, label: this.labels[vMain], bary: [a, b, c, w0, cb.u, cb.v], tissue, occ: cb.occ, size, offX, ctx };
+        const res = this.colorCube(col, qq);
         const jw = worldOf[jn];
         // game style: the face keeps more of the smooth head normal (a longer normal weighs more in the
         // shader's mix), so it reads flat and even instead of blotchy steps
         // (the front of the face is lit like a flat plane: normal pulled toward straight ahead)
         const nn = game && jn === 'head' && nrm.z > 0.2
           ? nrm.clone().lerp(new THREE.Vector3(0, 0, 1), nrm.z > 0.5 ? 0.6 : 0.3).normalize().multiplyScalar(2.5) : nrm.clone();
-        (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nn, v: vMain });
+        (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nn, v: vMain, pants: qq.pants });
         if (res) extra.push({ jn, size, offX, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
       }
     }
@@ -659,6 +660,7 @@ if (uRim > 0.0) {
         (byJoint[key] ||= []).push({ p: p2, c: new THREE.Color(e.color).multiplyScalar(1 - 0.06 * k), n: e.n });
       }
     }
+    if (game && this.body.look.outfit?.bottoms === 'long') this.addPantsHull(byJoint, worldOf, ctx, V);
     if (game) this.addFaceBlock(byJoint, worldOf, ctx, Vh); // (sets ctx.fb: the anchors for hair and shades)
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
@@ -914,38 +916,17 @@ if (uRim > 0.0) {
     }
     // game style: black belt (no buckle, like the concept) and a white cross logo on the right thigh, in whole
     // cubes: 3 wide x 5 high, the cross bar in the 2nd row from the top
-    // game style long pants (street wear, in whole cubes): a 2-row waistband with two white drawstring ends,
-    // a 3x4 cross logo halfway down the right leg (grey crossing cube), one baggy cube layer everywhere (two
-    // at the sides of the knee), fold ridges in short segments, a darker cuff row at the hem and no extra
-    // layer near the hem, so the sneakers stay visible
-    const LOGO = 0xe0e0e0, LOGO_MID = 0x8a8a8a, STRING = 0xd6d6d6, BAND = 0x2c2826;
-    const hemY = W.ankleL[1] + 0.02 * s; // = end of long pants
+    // game style long pants (street wear, in whole cubes): a 2-row waistband, below the crotch a clean baggy
+    // hull (addPantsHull) with fold ridges, the cross logo and the drawstring are added after the cube pass
+    const BAND = 0x2c2826;
     const longPants = game && o.bottoms === 'long' && color === c.shorts;
-    let pantsCube = false;
     if (longPants) {
-      const band = cellY(ctx.waistY); // top row of the pants
-      const row = cellY(y), col = cellX(x) - cellX(0);
-      if (row >= band - 1) color = BAND;
-      else if (row >= band - 3 && Math.abs(col) === 1 && n.z > 0.5 && /^(hips|spine|hip[LR])$/.test(jn)) { color = STRING; result = { layers: 1, color }; }
-      const lx = cellX(x) - cellX(W.hipR[0]), ly = row - cellY(0.45 * ctx.waistY);
-      if (color === c.shorts && n.z > 0.3 && /^(hip|knee)R$/.test(jn) && ((lx === 0 && ly >= -2 && ly <= 1) || (ly === 0 && Math.abs(lx) <= 1))) {
-        color = lx === 0 && ly === 0 ? LOGO_MID : LOGO;
-        result = { layers: 1, color }; // the logo sits on the baggy outer layer
+      if (cellY(y) >= cellY(ctx.waistY) - 1) color = BAND;
+      else if (/^(hip|knee)[LR]$/.test(jn)) {
+        color = this.pantsColor(cellX(x), cellY(y), n, /^knee/.test(jn), y, ctx);
+        q.pants = true; // (the hull pass uses these cubes)
+        if (y >= ctx.crotchY && !result) result = { layers: 1, color }; // above the crotch: one baggy layer
       }
-      pantsCube = color === c.shorts && /^(hip|knee)[LR]$/.test(jn);
-    }
-    if (pantsCube) {
-      const knee = /^knee/.test(jn), row = cellY(y);
-      if (y < hemY + q.size) color = 0x2a2220; // cuff
-      else {
-        // fold ridges: every 3rd row on the lower leg (every 4th on the thigh), in 2-4 cube segments
-        const every = knee ? 3 : 4, seg = hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 3), row, jn.length, 17);
-        // (few, and only on the lit side: more read as brown speckle)
-        const ridge = (r) => knee && r % every === 0 && hash(Math.floor((cellX(x) + Math.floor(z / q.size)) / 4), r, jn.length, 17) > 0.55;
-        if (ridge(row) && seg > 0 && (n.x < -0.2 || n.z > 0.5)) color = 0x46403c;
-      }
-      const kneeY = W.kneeL[1];
-      if (y >= hemY + 1.5 * q.size && !result) result = { layers: Math.abs(y - kneeY) < 0.08 * s && Math.abs(n.x) > 0.5 ? 2 : 1, color };
     }
     // accessories: chain around the neck (with a small pendant), watch on the left wrist
     const acc = look.acc || {};
@@ -1297,6 +1278,95 @@ if (uRim > 0.0) {
           list.push({ p: [x - jw[0], y - jw[1], z - jw[2]], c, n });
         }
       }
+    }
+  }
+
+  // Game style pants cube color (mesh cubes and hull alike): black, fold ridges every 3rd row on the lower
+  // leg / 4th on the thigh that zig-zag +-1 row every 3 columns (lit side warm grey, shade side darker), the
+  // row under a ridge in shadow, a darker cuff row at the hem
+  pantsColor(ix, iy, n, knee, y, ctx) {
+    const c = this.body.colors, hemY = ctx.W.ankleL[1] + 0.02 * ctx.s;
+    if (y < hemY + this.voxel) return 0x2a2220;
+    const every = knee ? 3 : 4, seg = Math.floor(ix / 3), zig = (i) => (hash(Math.floor(i / 3), 0, 0, 23) > 0.5 ? 1 : 0);
+    // (in 3-column segments, about half of them: folds, not stripes; none right under the crotch)
+    const ridge = (r) => (r + zig(ix)) % every === 0 && hash(seg, Math.floor((r + zig(ix)) / every), 0, 31) > 0.45 && (r + 3) * this.voxel < ctx.crotchY;
+    if (ridge(iy)) return n.x < -0.2 || n.z > 0.5 ? 0x5a4e46 : 0x3a322c;
+    const base = new THREE.Color(c.shorts).multiplyScalar(0.97 + 0.06 * hash(ix, iy, 0, 29));
+    if (ridge(iy + 1)) base.multiplyScalar(0.7);
+    return base.getHex();
+  }
+
+  // Game style baggy pants below the crotch: per leg and cube row a closed rounded-rectangle ring around the
+  // leg (a cube wider than the leg on every side, one more at the knee, smoothed over 3 rows), so no background
+  // shows through and the outline has no single-cube streaks. The ring cubes bend with the nearest leg cube.
+  // Then the cross logo on the frontmost cubes of the right leg, and a thin grey drawstring.
+  addPantsHull(byJoint, worldOf, ctx, V) {
+    const { W, s } = ctx, ox = this.grid.body, c = this.body.colors;
+    const cellX = (x) => Math.floor((x - ox) / V), cellY = (y) => Math.floor(y / V), cellZ = (z) => Math.floor(z / V);
+    const hemY = W.ankleL[1] + 0.02 * s, r0 = Math.ceil((hemY + 1.5 * V) / V), r1 = cellY(ctx.crotchY);
+    const kneeY = W.kneeL[1];
+    for (const S of ['L', 'R']) {
+      const rows = new Map(), all = new Map(); // row -> cubes of this leg
+      for (const jn of ['hip' + S, 'knee' + S]) {
+        const jw = worldOf[jn];
+        for (const r of byJoint[jn + '|' + V] || []) {
+          const w = [r.p[0] + jw[0], r.p[1] + jw[1], r.p[2] + jw[2]], cell = { ix: cellX(w[0]), iy: cellY(w[1]), iz: cellZ(w[2]), r, jn };
+          (all.get(cell.iy) || all.set(cell.iy, []).get(cell.iy)).push(cell);
+          if (r.pants && cell.iy >= r0 && cell.iy < r1) (rows.get(cell.iy) || rows.set(cell.iy, []).get(cell.iy)).push(cell);
+        }
+      }
+      const shape = new Map();
+      for (const [iy, cells] of rows) {
+        const xs = cells.map((q) => q.ix), zs = cells.map((q) => q.iz);
+        const cx = Math.round(xs.reduce((a, b) => a + b, 0) / xs.length), cz = Math.round(zs.reduce((a, b) => a + b, 0) / zs.length);
+        let hx = Math.ceil((Math.max(...xs) - Math.min(...xs) + 1) / 2), hz = Math.ceil((Math.max(...zs) - Math.min(...zs) + 1) / 2);
+        if (Math.abs((iy + 0.5) * V - kneeY) < 0.08 * s) hx += 1;
+        shape.set(iy, { cx, cz, hx, hz });
+      }
+      for (const [iy, cells] of rows) {
+        const sh = shape.get(iy), nb = [shape.get(iy - 1), sh, shape.get(iy + 1)].filter(Boolean);
+        const hx = Math.max(...nb.map((q) => q.hx)), hz = Math.max(...nb.map((q) => q.hz)); // no 1-row notches
+        const taken = new Set(cells.map((q) => q.ix + ',' + q.iz));
+        const knee = (iy + 0.5) * V < kneeY, jn = (knee ? 'knee' : 'hip') + S, jw = worldOf[jn];
+        for (let dx = -hx; dx <= hx; dx++) for (let dz = -hz; dz <= hz; dz++) {
+          const onX = Math.abs(dx) === hx, onZ = Math.abs(dz) === hz;
+          if (!(onX || onZ) || (onX && onZ)) continue; // ring without its 4 corners
+          const ix = sh.cx + dx, iz = sh.cz + dz;
+          if (taken.has(ix + ',' + iz)) continue;
+          let near = cells[0], best = Infinity;
+          for (const q of cells) { const d = Math.abs(q.ix - ix) + Math.abs(q.iz - iz); if (d < best) { best = d; near = q; } }
+          const n = new THREE.Vector3(onX ? Math.sign(dx) : 0, 0, onZ ? Math.sign(dz) : 0).normalize();
+          const w = [(ix + 0.5) * V + ox, (iy + 0.5) * V, (iz + 0.5) * V];
+          const col = new THREE.Color(this.pantsColor(ix, iy, n, knee, w[1], ctx));
+          if (iy >= r1 - 2) col.multiplyScalar(0.6); // top rows under the hips in shadow (no lit shelf at the crotch)
+          const r = { p: [w[0] - jw[0], w[1] - jw[1], w[2] - jw[2]], c: col, n, v: near.r.v, pants: true };
+          (byJoint[jn + '|' + V] ||= []).push(r);
+          (all.get(iy) || all.set(iy, []).get(iy)).push({ ix, iy, iz, r, jn });
+        }
+      }
+      // cross logo (3 wide x 4 high, grey crossing cube) on the frontmost cubes of the right leg
+      if (S === 'R') {
+        const lx0 = cellX(W.hipR[0]), ly0 = cellY(0.45 * ctx.waistY);
+        for (let lx = -1; lx <= 1; lx++) for (let ly = -2; ly <= 1; ly++) {
+          if (!((lx === 0) || ly === 0)) continue;
+          const front = (all.get(ly0 + ly) || []).filter((q) => q.ix === lx0 + lx && q.r.pants).sort((a, b) => b.iz - a.iz)[0];
+          if (front) front.r.c = new THREE.Color(lx === 0 && ly === 0 ? 0x8a8a8a : 0xe0e0e0);
+        }
+      }
+    }
+    // drawstring: 2 thin grey strands (half-size cubes) hanging from the waistband, in front of it
+    const Vd = V / 2, band = cellY(ctx.waistY) - 1, jw = worldOf.hips;
+    let zf = -Infinity;
+    for (const [key, list] of Object.entries(byJoint)) {
+      const jn = key.split('|')[0], w0 = worldOf[jn];
+      if (!/^(hips|spine|hip[LR])$/.test(jn)) continue;
+      for (const r of list) { const x = r.p[0] + w0[0], y = r.p[1] + w0[1]; if (cellY(y) === band && Math.abs(x) < 1.5 * V) zf = Math.max(zf, r.p[2] + w0[2]); }
+    }
+    if (!Number.isFinite(zf)) return;
+    const list = (byJoint['hips|' + Vd] ||= []);
+    for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) {
+      const w = [sx * V, band * V + 0.5 * Vd - k * Vd, zf + 0.5 * V + 0.5 * Vd];
+      list.push({ p: [w[0] - jw[0], w[1] - jw[1], w[2] - jw[2]], c: new THREE.Color(0x9aa0a8), n: new THREE.Vector3(0, 0, 1) });
     }
   }
 
