@@ -158,11 +158,15 @@ window.animator = animator;
 let lastTime = performance.now();
 
 // Keep canvas size in sync with the window
+let demo = null; // running demo tour (see runDemo)
+let progress = null; // progress view (Anfang / Jetzt / Ziel), see enterProgress
+
 function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
   fitView();
+  if (progress) frameProgress(); // the stage got taller / smaller (tab switch)
 }
 // The avatar is shown in the free space between the stat chips (left) and the accessory rail (right):
 // the picture is shifted sideways (view offset), so orbiting still turns around the avatar.
@@ -176,8 +180,6 @@ function fitView() {
 new ResizeObserver(resize).observe(stage);
 resize();
 
-let demo = null; // running demo tour (see runDemo)
-let progress = null; // progress view (Anfang / Jetzt / Ziel), see enterProgress
 
 // Render loop
 renderer.setAnimationLoop(() => {
@@ -769,12 +771,21 @@ function enterProgress() {
     '<div class="pl-arrow" data-k="a1">»</div><div class="pl-arrow" data-k="a2">»</div>';
   rebuildExtras();
   fitView();
-  // camera: all three (plus labels) in view
-  const vf = (camera.fov * Math.PI) / 360, hf = Math.atan(Math.tan(vf) * camera.aspect);
-  const d = Math.max(1.3 / Math.tan(vf), (SPACING + 0.47) / Math.tan(hf));
-  controls.target.set(0, 1.0, 0);
-  camera.position.set(0, 1.05, d);
+  frameProgress();
   for (const b of $('modeSeg').querySelectorAll('button')) b.classList.toggle('active', b.dataset.stage === 'progress');
+}
+// camera for the progress view: all three avatars inside the band between the top bar + kg chips (top)
+// and the names + progress bar (bottom), and inside the stage width - on any stage size
+function frameProgress() {
+  const W = stage.clientWidth, H = stage.clientHeight, tan = Math.tan((camera.fov * Math.PI) / 360);
+  const top = 100, bottom = 92, band = Math.max(80, H - top - bottom); // px reserved for the overlays
+  const figH = (progress?.anfang.a.topY ?? avatar.topY ?? 2.05) + 0.05, figW = 2 * (SPACING + 0.47);
+  const d = Math.max((figH * H) / band / (2 * tan), (figW * W) / (W - 16) / (2 * tan * camera.aspect));
+  const wpp = (2 * d * tan) / H; // world per pixel at the avatars
+  const y = figH / 2 + ((top + band / 2) - H / 2) * wpp; // band center on the figure center
+  controls.target.set(0, y, 0);
+  camera.position.set(0, y, d);
+  camera.updateMatrixWorld();
 }
 function leaveProgress() {
   if (!progress) return;
@@ -812,14 +823,27 @@ function progressFrame(dt) {
   const at = (x, y) => { v.set(x, y, 0).project(camera); return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height]; };
   const place = (sel, [x, y]) => { const n = $('progressLabels').querySelector(sel); if (n) { n.style.left = x + 'px'; n.style.top = y + 'px'; } };
   const avs = { anfang: progress.anfang.a, jetzt: avatar, ziel: progress.ziel.a };
+  const atZ = (x, y, z) => { v.set(x, y, z).project(camera); return [((v.x + 1) / 2) * rect.width, ((1 - v.y) / 2) * rect.height]; };
+  const chips = [];
   for (const [k, a] of Object.entries(avs)) {
     if (!a.joints.head) continue;
     // over the hair: top of the figure, following the head as it moves
     const x = a.root.position.x, hy = (a.topY ?? a.bindHeadY + 0.3) + (a.joints.head.getWorldPosition(v).y - a.bindHeadY) + 0.02;
     const [sx, sy] = at(x, hy);
-    place(`.pl-chip[data-k="${k}"]`, [sx, sy - 10]);
-    place(`.pl-name[data-k="${k}"]`, [at(x, 0)[0], at(x, 0)[1] + 8]);
+    chips.push({ el: $('progressLabels').querySelector(`.pl-chip[data-k="${k}"]`), x: sx, y: sy - 8 });
+    // names under the sneakers (their toes reach ~0.3 m forward)
+    const [nx, ny] = atZ(x, 0, 0.32);
+    place(`.pl-name[data-k="${k}"]`, [nx, Math.min(ny + 6, rect.height - 60)]);
   }
+  // kg chips: compact when they would not fit side by side, then pushed apart and kept inside the stage
+  const box = $('progressLabels');
+  const widths = () => chips.map((c) => c.el?.offsetWidth || 0);
+  box.classList.toggle('compact', rect.width < 420); // (decided by the stage width: measuring would flicker)
+  const w = widths();
+  for (let i = 0; i < chips.length; i++) chips[i].x = Math.min(rect.width - 6 - w[i] / 2, Math.max(6 + w[i] / 2, chips[i].x));
+  for (let i = 1; i < chips.length; i++) { const min = chips[i - 1].x + (w[i - 1] + w[i]) / 2 + 4; if (chips[i].x < min) chips[i].x = min; }
+  for (let i = chips.length - 2; i >= 0; i--) { const max = chips[i + 1].x - (w[i + 1] + w[i]) / 2 - 4; if (chips[i].x > max) chips[i].x = max; }
+  for (const c of chips) if (c.el) { c.el.style.left = c.x + 'px'; c.el.style.top = Math.max(56 + c.el.offsetHeight, c.y) + 'px'; }
   const hipY = avatar.mesh ? avatar.mesh.W.hips[1] : 0.7;
   place('.pl-arrow[data-k="a1"]', at(-SPACING / 2, hipY));
   place('.pl-arrow[data-k="a2"]', at(SPACING / 2, hipY));

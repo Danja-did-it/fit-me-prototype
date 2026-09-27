@@ -190,3 +190,6 @@ body[data-stage="progress"] #ctaScan, body[data-stage="progress"] #stageLegend {
 #progressBar .t { font-size: 12px; font-weight: 600; color: #c9ced6; text-align: center; margin-bottom: 4px; text-shadow: 0 1px 4px #000; }
 #progressBar .track { height: 6px; border-radius: 3px; background: #1f2633; overflow: hidden; }
 #progressBar .fill { height: 100%; width: 0; background: linear-gradient(90deg, #4fc3f7, #3b82f6); }
+
+#progressLabels.compact .pl-chip { padding: 4px 6px; font-size: 10px; }
+#progressLabels.compact .pl-chip b { font-size: 11px; }
