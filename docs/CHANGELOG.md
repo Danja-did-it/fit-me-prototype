@@ -43,5 +43,6 @@ Screenshots: `docs/screenshots/`.
 | v35 | 26.09.2026 | Kamera-Erkennung stabil: Live-Tracking + Plausibilitätsprüfung + Gegenprobe, Meldungen geglättet; Sprachansage max. 3× pro Hinweis, 15 s Abstand | – |
 | v36 | 26.09.2026 | „Voxel-Double“-Game-Look (Standard): großer Kopf, grobe Würfel, blockige Muskeln, weite Hose, Afro; Accessoires Sonnenbrille, Kette, Uhr | v36-voxel-double.png, v36-voxel-double-face.png |
 | v37 | 26.09.2026 | Voxel-Double wie im Konzept: Chibi-Proportionen (großer Kopf, kurze Beine), 2-cm-Würfel, massive Sonnenbrille, lockiger Afro, Gürtel + Kreuz-Logo, Sneaker-Details | v37-voxel-double-vs-concept.png |
+| v38 | 27.09.2026 | Multi-Agenten-Mission: Held-Look als Standard (Afro, Wayfarer, Kette, Sixpack, Kreuz-Hose, Sneaker), 2,8-cm-Würfel, Sonnenuntergangs-Bühne; App-Oberfläche mit 5 Tabs, Werte-Chips, Accessoire-Leiste und Fortschritt-Ansicht Anfang / Jetzt / Ziel | – |
 
 Details zu jeder Version: `PROGRESS.md`. Recherche und Entscheidungen: `docs/RESEARCH.md`.

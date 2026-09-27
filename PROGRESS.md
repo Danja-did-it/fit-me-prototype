@@ -370,3 +370,19 @@
     mouth in place).
   * Result: docs/screenshots/v37-voxel-double-vs-concept.png. Measuring / fit unchanged (validation in realistic
     style: all <= 1.4 cm).
+
+## Iteration 16: multi-agent mission (manager + design comparer + designer + coder + neutral grader)
+- Mission files (briefing, reports, specs, screenshots): $CLAUDE_JOB_DIR/tmp/mission (not in the repo).
+- Baseline v37: similarity to the concept 2.2/5; neutral grade 3.1/5 (Design 2.5).
+- Package A (avatar look, v38 commits abd9c9b..ea41b9e): hero look as default + demo avatar (afro, wayfarer shades,
+  chain, shirtless, baggy pants with cross, white sneakers, -50/+60), 2.8 cm cubes with a half-cube grid offset,
+  faceted cube faces, sunset stage (warm key, side rims, gradient backdrop, dark floor), flat face (nose/lips clamped),
+  clumpy near-black afro with fringe + sideburns, blocky six-pack + pec edge, short thick arms, cool white sneakers,
+  bead chain, pant cuff + folds; scans stay in the game look (palette skin/hair, no photo textures in game);
+  validate.mjs uses a neutral setup block. Realistic render pixel-identical to v37; accuracy within noise.
+  Comparer round 2: similarity 3.2/5.
+- Package B (app shell, v38): 5 tabs (Avatar, Scan, Körper, Style, Details) with a bottom tab bar on phones and a tab
+  strip on desktop, technical terms only in Details; stat chips on the stage (weight from mesh volume x density,
+  body fat, muscle mass since Anfang); accessory rail; demo caption at the top with avatarBox(); legend on the stage;
+  "Fortschritt" view with Anfang / Jetzt / Ziel side by side, kg / KF labels and a progress bar.
+  Fixes: scanned hair in game style (no bare pointed crown), avatarBox includes the afro. Validate all <= 1.4 cm.
