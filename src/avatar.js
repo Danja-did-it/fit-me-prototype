@@ -309,7 +309,9 @@ vCube = position / (0.5 * vCubeSize);`;
     // like in MagicaVoxel / Teardown renders - strong on the 0.75 cm body cubes, faint on fine detail.
     // Game style (uniforms, set in build()): flatter cube faces (less of the smooth mesh normal), a crisper
     // edge line, and lighter top / darker bottom faces, so every cube reads like in a voxel game.
-    this.shading = { uNormalMix: { value: 0.85 }, uBevel: { value: 0.11 }, uFaceTone: { value: 0 } };
+    // uRim: warm rim light from the smooth surface normal (game only) - it also lights the near-black afro edge,
+    // which a directional rim light cannot do
+    this.shading = { uNormalMix: { value: 0.85 }, uBevel: { value: 0.11 }, uFaceTone: { value: 0 }, uRim: { value: 0 } };
     const bevel = `#include <color_fragment>
 {
   vec3 a = abs(vCube);
@@ -326,11 +328,20 @@ vCube = position / (0.5 * vCubeSize);`;
         // shadows are looked up at the moved position too
         .replace('#include <worldpos_vertex>', `vec4 worldPosition = modelMatrix * vec4(skinCube(transformed), 1.0);`);
       // smooth light: blend each cube face normal with the real mesh normal
-      if (normals) v = v.replace('#include <common>', '#include <common>\nuniform float uNormalMix;').replace('#include <beginnormal_vertex>',
-        'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, uNormalMix));\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
+      if (normals) v = v.replace('#include <common>', '#include <common>\nuniform float uNormalMix;\nvarying vec3 vSmoothN;').replace('#include <beginnormal_vertex>',
+        'vec3 objectNormal = mat3(cubeSkin()) * normalize(mix(vec3(normal), instanceNormal, uNormalMix));\nvSmoothN = normalMatrix * (mat3(cubeSkin()) * instanceNormal);\n#ifdef USE_TANGENT\nvec3 objectTangent = vec3(tangent.xyz);\n#endif');
       shader.vertexShader = v;
-      if (normals) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\nuniform float uBevel;\nuniform float uFaceTone;')
-        .replace('#include <color_fragment>', bevel);
+      if (normals) shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vCube;\nvarying float vCubeSize;\nuniform float uBevel;\nuniform float uFaceTone;\nuniform float uRim;\nvarying vec3 vSmoothN;')
+        .replace('#include <color_fragment>', bevel)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+if (uRim > 0.0) {
+  vec3 sn = normalize(vSmoothN);
+  float rim = pow(1.0 - clamp(dot(sn, normalize(vViewPosition)), 0.0, 1.0), 8.0); // a thin edge only
+  float side = 0.15 + 0.85 * clamp(-sn.x, 0.0, 1.0); // stronger on the left, like the main rim light
+  // (not on near-black surfaces: the afro normals face sideways over large areas -> tan lobes)
+  float lit = mix(0.0, 1.0, smoothstep(0.04, 0.15, dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722))));
+  totalEmissiveRadiance += uRim * rim * side * lit * vec3(1.0, 0.55, 0.25);
+}`);
     };
     this.material.onBeforeCompile = (shader) => inject(shader, true);
     this.depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
@@ -530,6 +541,7 @@ vCube = position / (0.5 * vCubeSize);`;
     Object.assign(this.shading.uNormalMix, { value: game ? 0.35 : 0.85 }); // see the shader in the constructor
     Object.assign(this.shading.uBevel, { value: game ? 0.2 : 0.11 });
     Object.assign(this.shading.uFaceTone, { value: game ? 1 : 0 });
+    Object.assign(this.shading.uRim, { value: game ? 0.35 : 0 });
     const passes = [];
     if (Vd < V) {
       passes.push([V, voxelize(pos, F, V, null, (t) => !triDetail[t], grid.body), grid.body]);
@@ -713,7 +725,8 @@ vCube = position / (0.5 * vCubeSize);`;
     const head = jn === 'head' || jn === 'neck';
     // crease shading: gentle on face and hands (otherwise it reads like dirt)
     // game style: stronger baked ambient occlusion (the concept's soft shadows in the creases)
-    let shade = game ? Math.min(1.08, Math.max(0.42, 1.28 - 1.05 * occ)) : Math.min(1.05, Math.max(0.55, 1.18 - 0.7 * occ));
+    // (a flat surface has occ ~0.67: it keeps its full color, only creases get darker)
+    let shade = game ? Math.min(1.08, Math.max(0.45, 1 - 1.6 * (occ - 0.667))) : Math.min(1.05, Math.max(0.55, 1.18 - 0.7 * occ));
     if (head || hand) shade = 1 - (1 - shade) * (game && jn === 'head' ? 0.08 : 0.4); // game: flat, clean face
     const jitter = 0.985 + hash(Math.round(x * 400), Math.round(y * 400), Math.round(z * 400), 3) * 0.03;
     let result = null;
@@ -947,7 +960,9 @@ vCube = position / (0.5 * vCubeSize);`;
     // muscle definition at low body fat: fine grooves between muscle groups, the six-pack
     // (center line + 3 tendon lines of the straight belly muscle), muscle bellies a touch lighter
     if (!special && color === c.skin && this.fat && !head && !hand) shade *= this.definition(x, y, z, n, groove, label, ctx, q.size, q.offX, jn);
-    // game style crease shadows: the neck under the big head, the skin row just above the waistband
+    // game style crease shadows: the neck under the big head, the skin row just above the waistband;
+    // the body skin a bit lighter (the flat face is lit more evenly than the curved torso)
+    if (game && !special && color === c.skin && !head) shade *= 1.08;
     if (game && !special && color === c.skin) {
       if (jn === 'neck') shade *= 0.7;
       else if ((jn === 'spine' || jn === 'hips' || jn === 'chest') && o.bottoms !== 'short' && y > ctx.waistY && y <= ctx.waistY + q.size) shade *= 0.6;
@@ -1276,8 +1291,13 @@ vCube = position / (0.5 * vCubeSize);`;
       if (st.curly && game) {
         // curl clumps of 1-2 cube steps, and on ~20 % of the surface a 2x2 knob sticks out one more cube
         const cs = 0.034 * s, kc = 2 * V;
-        t *= 0.72 + 0.56 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7);
+        t *= 0.72 + 0.56 * clumpHash(x, y, z);
         if (hash(Math.floor((x - ox) / kc), Math.floor(y / kc), Math.floor(z / kc), 9) > 0.8) t += 1.1 * V;
+        // dome: thicker toward the crown (a round top, not a flat bowl), and on the top every other 2x2
+        // column one cube higher (no flat plateau)
+        const dy = Math.max(0, y - C[1]) / R[1], ny = dy / (Math.hypot(x / R[0], dy, (z - C[2]) / R[2]) || 1); // up-ness of the skull point
+        t += 0.032 * s * ny * ny;
+        if (ny > 0.7 && hash(Math.floor((x - ox) / kc), 0, Math.floor(z / kc), 12) > 0.5) t += V;
       } else if (st.curly) { const cs = 0.012 * s; t *= 0.8 + 0.4 * hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
       // strand clumps: every strand lies a little higher or lower -> light and shadow show the strands
       else if (st.thick >= 0.009) t *= 0.8 + 0.3 * hash(strandOf(x, z), 8, 1, 2);
@@ -1309,10 +1329,11 @@ vCube = position / (0.5 * vCubeSize);`;
     const yLo = Math.min(bottom - 0.045 * s, st.tail ? tailB[1] - 0.02 * s : Infinity);
     const snap = (v) => (Math.floor(v / V) + 0.5) * V;
     const snapX = (v) => (Math.floor((v - ox) / V) + 0.5) * V + ox; // on the head grid
+    function clumpHash(x, y, z) { const cs = 0.034 * s; return hash(Math.round(x / cs), Math.round(y / cs), Math.round(z / cs), 7); }
     // game style hair colors: near-black base with a darker / lighter value per cube, a mid tone on some
     // clumps, and warm highlights ONLY on upward-facing clumps (no speckle over the whole hair)
-    const mid = col.clone().multiplyScalar(1.25), hiC = col.clone().multiplyScalar(1.15);
-    hiC.setRGB(Math.max(hiC.r, 0.068), Math.max(hiC.g, 0.034), Math.max(hiC.b, 0.018)); // at least ~#4a3324 (linear values)
+    const gap = col.clone().multiplyScalar(0.12), hiC = col.clone().multiplyScalar(1.15);
+    hiC.setRGB(Math.max(hiC.r, 0.102), Math.max(hiC.g, 0.047), Math.max(hiC.b, 0.025)); // at least #5a3e2c (linear values)
     for (let y = snap(yLo); y < C[1] + R[1] + reach; y += V) {
       for (let x = snapX(x0); x < x1; x += V) for (let z = snap(z0); z < z1; z += V) {
         if (!inHair(x, y, z)) continue;
@@ -1346,8 +1367,12 @@ vCube = position / (0.5 * vCubeSize);`;
           const cell = [Math.floor((x - ox) / V), Math.floor(y / V), Math.floor(z / V)];
           const hv = hash(...cell, 5), hk = hash(Math.floor((x - ox) / (2 * V)), Math.floor(y / (2 * V)), Math.floor(z / (2 * V)), 6);
           if (st.curly) {
+            // curls: near-black gaps between the clumps (the thin clumps and the undersides), a base tone, and
+            // warm highlights on free top faces of upward-facing clumps
             const up = !inHair(x, y + V, z); // top face of a clump is free
-            hc = (up && hk > 0.6 && n.y > 0.45 ? hiC : hk > 0.4 && hk < 0.6 ? mid : col).clone().multiplyScalar(0.8 + 0.3 * hv);
+            if (clumpHash(x, y, z) < 0.35 || n.y < -0.25) hc = gap.clone();
+            else if (up && hk > 0.65 && n.y > 0.45) hc = hiC.clone();
+            else hc = col.clone().multiplyScalar(0.6 + 0.2 * hv); // (the warm key light lifts it a lot)
           } else hc = col.clone().multiplyScalar((0.9 + 0.12 * hash(strandOf(x, z), 1, 2, 3)) * (onBun && z > bunC[2] + 0.012 * s ? 0.55 : 1)); // even strands, the cube tops catch the light
         }
         list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: hc, n });
@@ -1383,28 +1408,30 @@ vCube = position / (0.5 * vCubeSize);`;
   }
 
   // Game style muscle definition in whole cubes (like voxel game characters): grooves are single dark cube
-  // lines, muscle blocks a bit lighter. The chibi torso is short, so the six-pack is laid out in cube rows
-  // below the lower edge of the chest muscle: block, groove, block, groove, block, groove (navel line);
-  // columns: center groove (linea alba), 2 block columns per side, the outer edge column dark.
+  // lines, the top row of every muscle block catches the light. The six-pack is laid out in cube rows below
+  // the lower edge of the chest muscle: 3 blocks of 2 rows (lit top row, plain row) with a groove row under
+  // each; columns: center groove (linea alba), 2 block columns per side, the outer edge column dark.
   gameDefinition(x, y, n, groove, label, ctx, size, offX, d, jn) {
     const { W, s } = ctx, ax = Math.abs(x);
     const cx = (v) => Math.floor((v - offX) / size), cy = (v) => Math.floor(v / size);
-    const dark = 1 - 0.4 * d, lit = 1 + 0.12 * d;
+    const dark = 1 - 0.5 * d;
     let f = groove < 0.55 * size ? 1 - 0.3 * d : 1; // other muscle borders (deltoid / biceps ...): one cube
+    if (/^shoulder[LR]$/.test(jn) && n.y > 0.3) f *= 1.15; // round deltoid tops catch the light
     const ys = (W.shoulderL[1] + W.shoulderR[1]) / 2, pecY = ys - 0.11 * s;
     const torso = /^(spine|chest|hips)$/.test(jn) || GROUP_IDS[label] === 'abs' || GROUP_IDS[label] === 'chest';
     if (!torso) return f;
-    // lower edge of the chest muscle: an arc, lowest in the middle; the row above it catches the light
+    // chest muscle: dark lower edge (an arc, lowest in the middle), lit rows above it
     if (n.z > 0.4 && ax < 0.11 * s) {
-      const py = pecY + 0.03 * s * (ax / (0.1 * s)) ** 2;
-      if (cy(y) === cy(py)) return Math.min(f, 1 - 0.42 * d);
-      if (cy(y) === cy(py) + 1) return f * (1 + 0.1 * d);
+      const py = pecY + 0.03 * s * (ax / (0.1 * s)) ** 2, r = cy(y) - cy(py);
+      if (r === 0) return Math.min(f, 1 - 0.55 * d);
+      if (r === 1) return f * (1 + 0.3 * d);
+      if (r === 2 || r === 3) return f * (1 + 0.12 * d);
     }
     // six-pack
     const row = cy(pecY) - cy(y), col = Math.abs(cx(x) - cx(0)), edgeCol = Math.abs(cx(0.08 * s) - cx(0));
-    if (n.z > 0.5 && row >= 1 && row <= 6 && col <= edgeCol && y > ctx.waistY) {
-      const grooveHere = col === 0 || col === edgeCol || row % 2 === 0;
-      f = grooveHere ? Math.min(f, dark) : f * lit;
+    if (n.z > 0.5 && row >= 1 && row <= 9 && col <= edgeCol && y > ctx.waistY) {
+      if (col === 0 || col === edgeCol || row % 3 === 0) f = Math.min(f, dark);
+      else f *= row % 3 === 1 ? 1 + 0.35 * d : 1 + 0.06 * d;
     }
     return f;
   }
