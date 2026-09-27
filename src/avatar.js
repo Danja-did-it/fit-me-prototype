@@ -681,6 +681,7 @@ vCube = position / (0.5 * vCubeSize);`;
     // top of the figure (hair included) in bind pose, e.g. for labels above the avatar
     this.topY = Math.max(...Object.entries(bySize).map(([size, list]) => list.reduce((m, r) => Math.max(m, r.w[1]), 0) + size / 2));
     this.bindHeadY = worldOf.head[1];
+    this.marks = { chinY: face.chinY, waistY: ctx.waistY, eyeY: face.eye.y, hemY: W.ankleL[1] + 0.02 * s, shoulderY: (W.shoulderL[1] + W.shoulderR[1]) / 2 }; // for checks
     this.bindInv = JOINT_NAMES.map((j) => new THREE.Matrix4().makeTranslation(-worldOf[j][0], -worldOf[j][1], -worldOf[j][2]));
     for (const [k, r] of Object.entries(saved)) if (joints[k]) joints[k].rotation.copy(r);
     this.armSpread = 0; // the arms are already posed in the mesh
@@ -1047,7 +1048,7 @@ vCube = position / (0.5 * vCubeSize);`;
   // painting stay consistent; the head is only moved down (the photo face map is corrected by
   // chibiShift) and made bigger later on the finished cubes (stylize).
   chibify(pos, W) {
-    const KL = 0.72, KT = 0.85, KA = 0.56;
+    const KL = 0.78, KT = 0.97, KA = 0.56;
     const yh = (W.hipL[1] + W.hipR[1]) / 2, ys = (W.shoulderL[1] + W.shoulderR[1]) / 2;
     const f = (y) => (y < yh ? y * KL : y < ys ? yh * KL + (y - yh) * KT : yh * KL + (ys - yh) * KT + (y - ys));
     const arm = (y) => (y < ys ? f(ys) - (ys - y) * KA : f(y));
@@ -1101,7 +1102,8 @@ vCube = position / (0.5 * vCubeSize);`;
   // shoes. Done on the finished cubes (positions spread out from a pivot, cubes grown by the same
   // factor), so all measuring, fitting and painting keeps the real body.
   stylize(byJoint, worldOf, ctx) {
-    const HEAD = 2.4, NECK = 1.25, FEET = 1.4, UPPER = 1.4, FORE = 1.25, DELT = 1.15;
+    // (head x1.95: its cubes end up within 10 % of the body cubes; slim neck like the concept)
+    const HEAD = 1.95, NECK = 0.95, FEET = 1.4, UPPER = 1.4, FORE = 1.25, DELT = 1.15;
     const out = {};
     for (const [key, list] of Object.entries(byJoint)) {
       const [name, size] = key.split('|');
@@ -1198,10 +1200,10 @@ vCube = position / (0.5 * vCubeSize);`;
     const game = this.style === 'game', gAfro = game && st.cover === 'afro';
     const ox = this.grid.head; // x offset of the head cube grid
     // (game style: hair at least ~1.3 head cubes thick, so short hair is a closed cube layer, no bare patches)
-    const thick = Math.max(st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.15 : 1), game ? 1.3 * V : 0);
+    const thick = Math.max(st.thick * s * (0.8 + 0.2 * (look.width || 1)) * (gAfro ? 1.35 : 1), game ? 1.3 * V : 0);
     const top = 0.004 * s * ((look.top || 1) - 1) * 3; // extra volume on top from the scan
     const C = [0, E.y + 0.018 * s, E.z - 0.07 * s];     // skull center
-    const R = [0.083 * s * (gAfro ? 1.0 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
+    const R = [0.083 * s * (gAfro ? 1.3 : 1), 0.108 * s + top + (gAfro ? 0.006 * s : 0), 0.103 * s]; // skull radii (just under the hair)
     const chin = face.chinY, shoulder = W.shoulderL[1];
     let bottom = { nape: E.y - 0.045 * s, chin: chin - 0.005 * s, shoulder: shoulder - 0.14 * s, ear: E.y - 0.035 * s, top: E.y + 0.045 * s }[st.bottom];
     // real length from the hair scan (medium / long only)
