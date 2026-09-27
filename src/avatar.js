@@ -630,7 +630,7 @@ if (uRim > 0.0) {
         // game style: the face keeps more of the smooth head normal (a longer normal weighs more in the
         // shader's mix), so it reads flat and even instead of blotchy steps
         // (the front of the face is lit like a flat plane: normal pulled toward straight ahead)
-        const nn = game && jn === 'head' && !isEye && nrm.z > 0.2
+        const nn = game && jn === 'head' && nrm.z > 0.2
           ? nrm.clone().lerp(new THREE.Vector3(0, 0, 1), nrm.z > 0.5 ? 0.6 : 0.3).normalize().multiplyScalar(2.5) : nrm.clone();
         (byJoint[jn + '|' + size] ||= []).push({ p: [cb.x - jw[0], cb.y - jw[1], cb.z - jw[2]], c: col.clone(), n: nn, v: vMain });
         if (res) extra.push({ jn, size, offX, x: cb.x, y: cb.y, z: cb.z, n: nrm.clone(), layers: res.layers, color: res.color, jw });
@@ -656,6 +656,7 @@ if (uRim > 0.0) {
     if (this.body.look.hair.style !== 'none') this.addHair(byJoint, worldOf, ctx, Vd);
     if (this.body.look.outfit?.shoes) this.addShoes(byJoint, worldOf, ctx, V, pos);
     if (this.body.look.acc?.glasses) this.addGlasses(byJoint, worldOf, ctx, Vh); // head cube size
+    if (game) this.addJawEars(byJoint, worldOf, ctx, Vh);
     if (this.style === 'game') this.stylize(byJoint, worldOf, ctx);
 
     // ---- meshes: one per cube size, positions in bind pose + skin weights ----
@@ -790,7 +791,8 @@ if (uRim > 0.0) {
           if (!glasses && col === ecol && (row === erow || row === erow + 1)) special = new THREE.Color(0x1a1410);
           else if (!glasses && col === ecol + out1 && row === erow + 1) special = new THREE.Color(0xf4f1ea);
           else if (!glasses && row === erow + 3 && [-1, 0, 1, 2].includes((col - ecol) * out1)) color = c.brow;
-          else if (row === cellY(face.mouthY) && Math.abs(col - cellX(0)) <= 1) color = new THREE.Color(c.skin).multiplyScalar(0.6).getHex();
+          else if (row === cellY(face.mouthY) && Math.abs(col - cellX(0)) <= 1) color = new THREE.Color(c.skin).multiplyScalar(0.68).getHex();
+          else if (row === cellY(face.noseY) && col === cellX(0)) color = new THREE.Color(c.skin).multiplyScalar(0.9).getHex(); // a hint of a nose tip
           if (glasses && row === erow - 2 && ax < E.x + 0.04 * s) shade *= 0.85; // shadow under the shades
         }
       } else {
@@ -1062,8 +1064,8 @@ if (uRim > 0.0) {
     const kz = Math.floor(zf / V), zAt = (k) => (k + 0.5) * V;
     const frame = new THREE.Color(0x0b0b0b), lens = new THREE.Color(0x1c1c1c), glint = new THREE.Color(0x3a3a3a), n = new THREE.Vector3(0, 0, 1);
     const add = (i, j, k, c, nn = n) => list.push({ p: [colX(cX + i) - hw[0], rowY(j) - hw[1], zAt(k) - hw[2]], c: c.clone(), n: nn });
-    const w = Math.max(4, Math.min(6, half)); // eyepiece width in columns (outermost column = frame)
-    add(0, erow + 1, kz + 1, frame); add(0, erow + 1, kz + 2, frame); // bridge
+    const w = Math.max(4, Math.min(7, half + 1)); // eyepiece width: the shades stick out 1 cube beyond the face
+    for (const j of [erow, erow + 1]) { add(0, j, kz + 1, frame); add(0, j, kz + 2, frame); } // black bridge, 2 rows (skin only below)
     for (const sx of [-1, 1]) {
       for (let a = 1; a <= w; a++) for (let j = erow - 1; j <= erow + 1; j++) {
         const isFrame = j === erow + 1 || a === 1 || a === w;
@@ -1072,6 +1074,46 @@ if (uRim > 0.0) {
       }
       // temples: from the outer frame column straight back toward the ears
       for (let k = kz; zAt(k) > zf - 0.085 * s; k--) add(sx * w, erow + 1, k, frame, new THREE.Vector3(sx, 0, 0));
+    }
+  }
+
+  // Voxel-Double face shape (game style, head cubes before the head is scaled up): a square jaw - the rows
+  // from the mouth down keep >= 85 % of the cheek width, then one step to a flat chin >= 60 % - and small
+  // blocky ears just behind the sideburns.
+  addJawEars(byJoint, worldOf, ctx, V) {
+    const { face, s } = ctx, E = face.eye, hw = worldOf.head, ox = this.grid.head, skin = new THREE.Color(this.body.colors.skin);
+    const list = byJoint['head|' + V];
+    if (!list) return;
+    const cellX = (x) => Math.floor((x - ox) / V), cellY = (y) => Math.floor(y / V), cX = cellX(0);
+    const front = new Map(); // row -> { half, z } of the face-front shell
+    for (const r of list) {
+      if (r.v === undefined || this.vertEar[r.v]) continue; // face skin cubes (not hair, glasses, ears)
+      const x = r.p[0] + hw[0], y = r.p[1] + hw[1], z = r.p[2] + hw[2], row = cellY(y), f = front.get(row) || { half: 0, z: -Infinity };
+      if (z < E.z - 0.04 * s) continue; // front half of the head
+      f.half = Math.max(f.half, Math.abs(cellX(x) - cX)); f.z = Math.max(f.z, z);
+      front.set(row, f);
+    }
+    const erow = cellY(E.y), mrow = cellY(face.mouthY), crow = Math.min(...front.keys()); // lowest face row = chin
+    const cheek = Math.max(...[erow - 1, erow, erow + 1].map((r) => front.get(r)?.half ?? 0));
+    if (!cheek || !Number.isFinite(crow)) return;
+    const n = new THREE.Vector3(0, 0, 1).multiplyScalar(2.5), zMouth = front.get(mrow)?.z ?? -Infinity;
+    for (let row = mrow; row >= crow; row--) {
+      const f = front.get(row);
+      if (!f || f.z < zMouth - 2.5 * V || f.half < 0.5 * cheek) continue; // (not the under-chin rows: they float)
+      const below = front.get(row - 1); // the chin row (nothing below it) only to 60 %
+      const target = Math.round(!below || row === crow ? 0.6 * cheek : 0.85 * cheek);
+      const zc = (Math.floor(f.z / V) + 0.5) * V; // the row's front plane
+      for (let a = f.half + 1; a <= target; a++) for (const sx of [-1, 1]) {
+        const x = (cX + sx * a + 0.5) * V + ox, y = (row + 0.5) * V;
+        list.push({ p: [x - hw[0], y - hw[1], zc - hw[2]], c: skin.clone().multiplyScalar(row === crow ? 0.8 : 0.97), n });
+      }
+    }
+    // ears: 2 rows x 2 deep per side, just outside the face width, behind the face front
+    const f0 = front.get(erow - 1) || front.get(erow);
+    const kf = Math.floor(f0.z / V);
+    for (const sx of [-1, 1]) for (const row of [erow - 1, erow - 2]) for (const dk of [4, 5]) {
+      const x = (cX + sx * (cheek + 1) + 0.5) * V + ox, y = (row + 0.5) * V, z = (kf - dk + 0.5) * V;
+      list.push({ p: [x - hw[0], y - hw[1], z - hw[2]], c: skin.clone().multiplyScalar(dk === 5 ? 0.75 : 0.95), n: new THREE.Vector3(sx, 0, 0) });
     }
   }
 
@@ -1126,7 +1168,7 @@ if (uRim > 0.0) {
       const x = Math.abs(pos[v * 3]), y = pos[v * 3 + 1];
       if (!isHead(v) || y < y0 || y > y1 || x >= 0.03 * s) continue;
       const b = Math.floor(y / bin), zr = ref.get(b) ?? ref.get(b - 1) ?? ref.get(b + 1);
-      if (zr != null) pos[v * 3 + 2] = Math.min(pos[v * 3 + 2], zr + 0.7 * Vh);
+      if (zr != null) pos[v * 3 + 2] = Math.min(pos[v * 3 + 2], zr + 0.3 * Vh);
     }
   }
 
